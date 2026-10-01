@@ -1107,6 +1107,9 @@
                  "Los datos se ven ahora pero se pierden al cerrar.", "warn");
     }
     renderFlota();
+    /* La tira de temporada suma el calado de los CNN-EMB guardados: con uno
+       nuevo, esa cifra cambió aunque el libro sea el mismo. */
+    if(temporada) renderTemporada();
   }
 
   /* renderFlota se retiró junto con su pestaña: la temporada ahora se
@@ -2052,6 +2055,10 @@
       $("temp-lectura").innerHTML = '<p class="text-3">El filtro no deja ninguna recalada.</p>';
       $("temp-hero").className = "kpi con-chispa na";
       $("temp-hero-val").textContent = "—";
+      /* Sin recaladas el periodo no embarcó nada. Dejar la cifra anterior
+         en pie la haría pasar por la del filtro nuevo. */
+      $("t-embarcado").textContent = "—";
+      $("t-embarcado-sub").textContent = "sin recaladas en el filtro";
       return;
     }
 
@@ -2072,7 +2079,40 @@
     $("t-recaladas-sub").textContent = t.enDemurrage + " con demurrage · " +
       (t.naves - t.enDemurrage) + " sin";
     $("t-tonelada").textContent = t.usdPorTonelada.toFixed(2);
-    $("t-tonelada-sub").textContent = Math.round(t.cargo).toLocaleString("es-CL") + " t embarcadas";
+    $("t-tonelada-sub").textContent = Math.round(t.cargo).toLocaleString("es-CL") + " t del libro";
+
+    /* ── TM embarcadas del periodo, desde el calado ──
+       El filtro de arriba recorta el libro; el calado está en los CNN-EMB
+       guardados, que es otro archivo. Se cruzan por nombre y fecha con el
+       mismo emparejador de la conciliación. */
+    var emb = CONC.tonelajeEmbarcado((v.datos && v.datos.recaladas) || [], flota);
+    var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
+    $("t-embarcado").textContent = emb.total > 0 ? mil(emb.total) : "—";
+    ajustarCifra($("t-embarcado"));
+    /* El denominador va siempre: un total que cubre 8 de 14 naves se lee
+       como el total del mes si no dice sobre cuántas está hecho, y con eso
+       se presenta a gerencia una cifra que no es la que se embarcó. */
+    if(!emb.naves){
+      $("t-embarcado-sub").textContent = "carga el libro de reportería";
+    }else if(!emb.conDato){
+      $("t-embarcado-sub").textContent = "ninguna de las " + emb.naves + " naves tiene CNN-EMB cargado";
+    }else{
+      var partes = [emb.conDato + " de " + emb.naves + " naves"];
+      partes.push(emb.conCalado === emb.conDato
+        ? "todas por draft survey"
+        : emb.conCalado + " por draft survey");
+      $("t-embarcado-sub").textContent = partes.join(" · ");
+    }
+    /* Incompleto se ve, no se deduce: mismo tono de aviso que usa la ficha
+       de liquidado cuando hay proyecciones. */
+    $("kpi-t-embarcado").querySelector(".ico-marca").style.color =
+      (emb.conDato && emb.conDato < emb.naves) ? AVISO : "var(--cmp-blue-400)";
+    /* Contra el libro, que es la otra cifra que alguien va a citar. */
+    $("kpi-t-embarcado").title = emb.conDato
+      ? "Calado: " + mil(emb.total) + " t sobre " + emb.conDato + " naves.\n" +
+        "Libro (BL): " + mil(emb.cargoLibro) + " t sobre " + emb.naves + " naves." +
+        (emb.pesometro > 0 ? "\n" + mil(emb.pesometro) + " t vienen del pesómetro, no del calado." : "")
+      : "Sin CNN-EMB cargados para este periodo.";
     $("t-espera").textContent = Math.round(t.espera).toLocaleString("es-CL");
     /* La cifra es la suma de la espera de todas las naves, no un promedio,
        y sin decir sobre cuántas se lee como si fuera una sola espera. El

@@ -1316,7 +1316,12 @@ body.en-presentacion { overflow: hidden; }
 #vista-operacion .tira6 .kpi-lbl { letter-spacing:.03em; min-height:2.1em; }
 /* La tira de resultado aguanta más columnas que la de productividad: sus
    rótulos son de una palabra, no "Tasa de operación efectiva". */
-.tira6.resultado { grid-template-columns:repeat(7, minmax(0,1fr)); }
+/* Con ocho fichas, una sola fila solo cabe en pantallas muy anchas: a
+   1.600 px cada ficha queda en 180 px y «US$ 1.543.875,00» se corta por el
+   borde. Dos filas de cuatro se leen de un barrido igual y dejan la cifra
+   entera, que es lo que se viene a leer. */
+.tira6.resultado { grid-template-columns:repeat(4, minmax(0,1fr)); }
+@media (min-width:1800px){ .tira6.resultado { grid-template-columns:repeat(8, minmax(0,1fr)); } }
 /* Las cifras no se parten: "US$ 601.263,94" en dos líneas se lee como dos
    datos. Para que quepan sin achicar el cuerpo se le quitan píxeles a lo que
    no es dato —la columna del icono y el padding lateral—, que es de donde
@@ -1367,7 +1372,6 @@ body.en-presentacion { overflow: hidden; }
    —la ficha tiene overflow oculto— se achica. La pone el render, que es
    quien conoce el largo del texto. */
 .cifra-larga { font-size:.84em; }
-@media (max-width:1340px){ .tira6.resultado { grid-template-columns:repeat(4, minmax(0,1fr)); } }
 @media (max-width:1000px){ .tira6.resultado { grid-template-columns:repeat(3, minmax(0,1fr)); } }
 @media (max-width:700px) { .tira6.resultado { grid-template-columns:repeat(2, minmax(0,1fr)); } }
 

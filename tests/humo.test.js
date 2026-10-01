@@ -169,7 +169,15 @@ function chequear(nombre, ok, detalle){
     });
     chequear("los dos días quedan pintados y en la tabla",
       guardado.pintados === 2 && guardado.filas === 1, JSON.stringify(guardado));
-    chequear("y el panel cuenta los días", /2 d cerrado/.test(guardado.nota), guardado.nota);
+    /* El panel cuenta los días DEL MES que muestra, y tras guardar salta al
+       mes del inicio del evento. Si «ayer y hoy» cruzan el cambio de mes
+       —como el 30 de septiembre y el 1 de octubre— solo uno de los dos cae
+       en ese mes. Exigir «2 d cerrado» hacía fallar la prueba un día al mes
+       con la app funcionando perfectamente. */
+    var enElMes = ayerIso.slice(0, 7) === hoyIso.slice(0, 7) ? 2 : 1;
+    chequear("y el panel cuenta los días del mes que muestra",
+      new RegExp(enElMes + " d cerrado").test(guardado.nota),
+      guardado.nota + " (se esperaban " + enElMes + ")");
     sinErrores("registrar un evento en la bitácora");
   }
 
@@ -404,6 +412,40 @@ function chequear(nombre, ok, detalle){
       });
       chequear("la temporada se pinta", pintada !== "—" && pintada !== "", pintada);
     }
+
+    /* TM embarcadas cruza dos fuentes que no se hablan: el filtro recorta el
+       LIBRO y el calado vive en los CNN-EMB. Lo que se comprueba acá es la
+       cañería —que el periodo filtrado llegue hasta la ficha—, porque la
+       suma en sí ya tiene sus propias pruebas. El denominador de la ficha
+       tiene que ser el mismo número de recaladas que muestra la tira. */
+    var emb = await pagina.evaluate(function(){
+      return {naves: document.getElementById("t-recaladas").textContent.trim(),
+              sub: document.getElementById("t-embarcado-sub").textContent,
+              valor: document.getElementById("t-embarcado").textContent.trim()};
+    });
+    chequear("TM embarcadas cuenta sobre las recaladas del filtro",
+      emb.sub.indexOf(emb.naves) >= 0, JSON.stringify(emb));
+
+    /* Y que siga cuadrando al mover el filtro, que es para lo que se pidió
+       la ficha. Los dos desplegables solo ofrecen valores que existen en el
+       libro, así que se toma el primer mes real en vez de inventar uno. */
+    var meses = await pagina.$$eval("#filtro-mes option", function(ns){
+      return ns.map(function(n){ return n.value; }).filter(function(v){ return v !== ""; });
+    });
+    chequear("el filtro ofrece meses del libro", meses.length > 0, meses.join(","));
+    if(meses.length){
+      await pagina.selectOption("#filtro-mes", meses[0]);
+      await pagina.waitForTimeout(500);
+      var filtrado = await pagina.evaluate(function(){
+        return {naves: document.getElementById("t-recaladas").textContent.trim(),
+                sub: document.getElementById("t-embarcado-sub").textContent};
+      });
+      chequear("filtrando por mes, la ficha sigue cuadrando con la tira",
+        filtrado.sub.indexOf(filtrado.naves) >= 0, JSON.stringify(filtrado));
+      await pagina.selectOption("#filtro-mes", "");
+      await pagina.waitForTimeout(400);
+    }
+    sinErrores("filtrar la temporada");
 
     /* `con-chispa` viene del HTML y abre la fila donde se dibuja la chispa,
        pero renderTemporada reescribe el className entero de la ficha para

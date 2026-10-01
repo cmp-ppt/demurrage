@@ -290,5 +290,69 @@ chequear("rate", d.tarifaDemurrage, 41906);
 chequear("tonelaje", d.tonelaje, 200894);
 chequear("NOR", d.nor.toISOString(), new Date(2026,7,14,7,54).toISOString());
 
+/* ---------------------------------------------------------------- */
+bloque("Toneladas embarcadas del periodo");
+/* El filtro de arriba recorta el LIBRO; el calado vive en el CNN-EMB, que es
+   otro archivo. La suma cruza los dos con el mismo emparejador que usa la
+   conciliación, para no tener dos reglas de decidir si dos filas son la
+   misma nave. */
+var F = function(s){ var m=/(\d{4})-(\d{2})-(\d{2})/.exec(s); return new Date(+m[1],+m[2]-1,+m[3]); };
+var libroMes = [
+  {trimestre:"Q3", nave:"CHINA TRIUMPH", cargo:204175, finCarga:F("2026-09-05")},
+  {trimestre:"Q3", nave:"MN PIGI",       cargo:180000, finCarga:F("2026-09-18")},
+  {trimestre:"Q3", nave:"NISEKO QUEEN",  cargo:200000, finCarga:F("2026-09-28")}
+];
+function cnn(nave, fin, extra){
+  return {campos: Object.assign({nave:nave, finCarga:fin}, extra || {})};
+}
+var conCalado = C.tonelajeEmbarcado(libroMes, [
+  cnn("MN CHINA TRIUMPH", "2026-09-05T13:30", {rteCalado:"202550", rtePesometro09:"202000"}),
+  cnn("PIGI",             "2026-09-18T10:00", {rteCalado:"181200"})
+]);
+/* Manda el calado sobre el pesómetro: es la misma precedencia que aplica el
+   lector del CNN-EMB, y es lo que se liquida. */
+chequear("suma los dos calados", conCalado.total, 202550 + 181200);
+chequear("y no mira el pesómetro cuando hay calado", conCalado.pesometro, 0);
+chequear("dice cuántas traen draft survey", conCalado.conCalado, 2);
+chequear("y cuántas naves tiene el periodo", conCalado.naves, 3);
+/* El denominador importa: sin él, un total parcial se lee como el total. */
+chequear("la que no tiene CNN-EMB se cuenta aparte", conCalado.sinCnnEmb, 1);
+chequear("el cargo del libro queda para contrastar", conCalado.cargoLibro, 584175);
+
+/* Sin calado se cae al pesómetro, pero contado por separado. */
+var soloPeso = C.tonelajeEmbarcado(libroMes, [
+  cnn("MN CHINA TRIUMPH", "2026-09-05T13:30", {rtePesometro09:"202000"})
+]);
+chequear("sin calado usa el pesómetro", soloPeso.total, 202000);
+chequear("y no lo cuenta como draft survey", soloPeso.conCalado, 0);
+chequear("pero sí como dato", soloPeso.conDato, 1);
+
+/* Una nave que no está en el periodo filtrado no suma: es lo que hace que
+   el filtro de arriba funcione. */
+var fuera = C.tonelajeEmbarcado(libroMes, [
+  cnn("SEACON AFRICA", "2026-01-15T10:00", {rteCalado:"203160"})
+]);
+chequear("una nave ajena al periodo no suma", fuera.total, 0);
+chequear("y el periodo sigue teniendo sus tres naves", fuera.naves, 3);
+chequear("las tres quedan sin CNN-EMB", fuera.sinCnnEmb, 3);
+
+/* Dos CNN-EMB que emparejan con la misma fila del libro —reimportar la misma
+   recalada con otro código— sumarían el embarque dos veces. */
+var duplicado = C.tonelajeEmbarcado(libroMes, [
+  cnn("MN CHINA TRIUMPH", "2026-09-05T13:30", {rteCalado:"202550"}),
+  cnn("CHINA TRIUMPH",    "2026-09-05T14:00", {rteCalado:"202550"})
+]);
+chequear("no suma dos veces la misma recalada", duplicado.total, 202550);
+chequear("ni la cuenta dos veces", duplicado.conDato, 1);
+
+/* Casos de borde: nada que cruzar. */
+chequear("sin flota, cero", C.tonelajeEmbarcado(libroMes, []).total, 0);
+chequear("sin flota, el periodo igual se describe", C.tonelajeEmbarcado(libroMes, []).sinCnnEmb, 3);
+chequear("sin recaladas, cero naves", C.tonelajeEmbarcado([], []).naves, 0);
+chequear("sin argumentos no revienta", C.tonelajeEmbarcado().total, 0);
+/* Un CNN-EMB sin ninguna cifra de tonelaje no inventa una. */
+chequear("sin tonelaje de ningún tipo no suma",
+  C.tonelajeEmbarcado(libroMes, [cnn("MN CHINA TRIUMPH", "2026-09-05T13:30", {})]).conDato, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

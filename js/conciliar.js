@@ -411,11 +411,71 @@
     };
   }
 
+  /**
+   * Toneladas embarcadas en un periodo, tomadas del calado.
+   *
+   * El dato vive en dos sitios que no se hablan: el filtro de arriba recorta
+   * el LIBRO (trimestre y mes), y el calado está en el CNN-EMB de cada
+   * recalada, que es otro archivo. Así que se cruza igual que la
+   * conciliación: por nombre y por fecha, con el mismo emparejador, para no
+   * tener dos reglas distintas de decidir si dos filas son la misma nave.
+   *
+   * No se deriva el trimestre de la fecha a propósito. Los trimestres del
+   * libro no son los del calendario —Q1 arranca en diciembre— así que
+   * calcularlo a partir del mes metería naves en el trimestre equivocado.
+   * Manda el libro: una nave pertenece al periodo si su fila sobrevivió al
+   * filtro.
+   *
+   * Precedencia del tonelaje, la misma que aplica el lector del CNN-EMB:
+   * calado sobre pesómetro. Se cuenta aparte cuántas vienen de cada uno,
+   * porque un total que mezcla draft survey con correa sin decirlo es un
+   * número que no se puede defender en una liquidación.
+   */
+  function tonelajeEmbarcado(recaladas, flota){
+    var out = {total: 0, calado: 0, pesometro: 0, otro: 0,
+               conCalado: 0, conDato: 0, naves: 0, sinCnnEmb: 0, cargoLibro: 0};
+    recaladas = recaladas || [];
+    out.naves = recaladas.length;
+    recaladas.forEach(function(r){ out.cargoLibro += Number(r.cargo) || 0; });
+    if(!recaladas.length || !flota || !flota.length){
+      out.sinCnnEmb = out.naves;
+      return out;
+    }
+
+    var vistas = {};
+    (flota || []).forEach(function(reg){
+      var c = (reg && reg.campos) || {};
+      if(!c.nave) return;
+      var hitos = {finCarga: c.finCarga, inicioCarga: c.inicioCarga,
+                   primeraEspia: c.primeraEspia, arribo: c.arribo};
+      var par = emparejar(c.nave, recaladas, hitos);
+      /* Ambigua significa que el emparejador no pudo decidir entre dos
+         recaladas de la misma nave. Sumarla sería elegir al azar en qué mes
+         cae un embarque entero. */
+      if(!par || par.ambigua || !par.fila) return;
+      var clave = par.fila.trimestre + "|" + normalizar(par.fila.nave);
+      if(vistas[clave]) return;              // dos CNN-EMB para la misma fila
+      vistas[clave] = true;
+
+      var calado = Number(c.rteCalado) || 0;
+      var peso   = Number(c.rtePesometro09) || 0;
+      var mano   = Number(c.tonelaje) || 0;
+      var usado = 0;
+      if(calado > 0){ usado = calado; out.calado += calado; out.conCalado++; }
+      else if(peso > 0){ usado = peso; out.pesometro += peso; }
+      else if(mano > 0){ usado = mano; out.otro += mano; }
+      if(usado > 0){ out.total += usado; out.conDato++; }
+    });
+    out.sinCnnEmb = Math.max(0, out.naves - out.conDato);
+    return out;
+  }
+
   var api = {normalizar: normalizar, distancia: distancia, emparejar: emparejar,
              emparejarPlan: emparejarPlan,
              actualizarNor: actualizarNor, aCampo: aCampo,
              conciliar: conciliar, netoLiquidado: netoLiquidado,
-             datosDeContrato: datosDeContrato};
+             datosDeContrato: datosDeContrato,
+             tonelajeEmbarcado: tonelajeEmbarcado};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 
