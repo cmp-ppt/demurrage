@@ -370,18 +370,27 @@
   <!-- Estado de la recalada y su lectura: lo primero que se mira -->
   <details class="bloque" id="bl-reporteria" open>
     <summary data-franja="flota">
-      <span class="bloque-t"><svg class="ico" aria-hidden="true"><use href="#ico-tabla"></use></svg>Libro de reportería</span>
+      <span class="bloque-t"><svg class="ico" aria-hidden="true"><use href="#ico-tabla"></use></svg>Libros del mes</span>
       <span class="bloque-n" id="rep-origen">sin cargar</span>
     </summary>
     <div class="bloque-bd">
+      <!-- Dos libros distintos entran por acá y se reconocen por sus hojas,
+           no por el botón: la planilla de turno no tenía dónde soltarse y
+           había que adivinar que servía el botón de la nave. -->
       <div class="soltar" id="soltar-rep">
-        <div class="soltar-t">Arrastra aquí «Reportería Demurrages … PUNTA TOTORALILLO.xlsx»</div>
-        <div class="soltar-s">o haz clic · se lee en tu navegador</div>
+        <div class="soltar-t">Arrastra aquí el libro de reportería o la planilla de turno</div>
+        <div class="soltar-s">«Reportería Demurrages … PUNTA TOTORALILLO.xlsx» o
+          «DATOS_TURNO_PPT_31-07-2026.xlsx» · o haz clic · se leen en tu navegador</div>
       </div>
       <input type="file" id="archivo-rep" accept=".xlsx,.xlsm" hidden>
       <div class="aviso info" style="margin-top:10px">
-        Trae el demurrage <strong>ya liquidado</strong>: no se recalcula. Lo que se acordó y se
-        pagó manda sobre el time sheet de la banda «Recalada».
+        El <strong>libro de reportería</strong> trae el demurrage <strong>ya liquidado</strong>:
+        no se recalcula. Lo que se acordó y se pagó manda sobre el time sheet de la banda
+        «Recalada».
+        <br>La <strong>planilla de turno</strong> —hoja ACUMULADO EMBARQUE, la del último día del
+        mes— trae el <strong>calado definitivo</strong>, que no está en el CNN-EMB ni en el libro.
+        Con ella salen las TM embarcadas del mes y el tonelaje de cada nave. Se comparte con el
+        equipo: la carga uno y la ven los tres.
       </div>
       <!-- El NOR no viene en el CNN-EMB y casi todo el historial quedó
            contando el laytime desde el amarre. El libro sí lo trae. -->

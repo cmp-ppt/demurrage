@@ -411,11 +411,19 @@ function chequear(nombre, ok, detalle){
       await pg2.click("#btn-entrar"); await pg2.waitForTimeout(2500);
       var visto = await pg2.evaluate(function(){
         return {rotulo: document.getElementById("rep-origen").textContent,
-                recaladas: document.getElementById("t-recaladas").textContent};
+                recaladas: document.getElementById("t-recaladas").textContent,
+                meses: Object.keys(JSON.parse(
+                  localStorage.getItem("demurrage-ppt.turnos.v1") || "{}")).sort().join(",")};
       });
       chequear("el segundo navegador recibe el libro sin cargar nada",
         /recaladas/.test(visto.rotulo) && visto.recaladas !== "—",
         visto.rotulo + " · resumen: " + visto.recaladas);
+      /* Y la planilla de turno que cargó el primero. Es la razón de ser de
+         la tabla: la carga uno y la ven los tres, sin repetir el Excel. */
+      chequear("y también la planilla de turno del primero",
+        visto.meses === "2026-09", visto.meses || "(ninguna)");
+      chequear("el rótulo del bloque nombra los dos libros",
+        /recaladas/.test(visto.rotulo) && /mes de turno/.test(visto.rotulo), visto.rotulo);
       chequear("y sin errores al adoptarlo", errs2.length === 0, errs2.join(" | ") || "ninguno");
       await otro.close();
     }else{

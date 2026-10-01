@@ -1332,7 +1332,10 @@
       turnosGuardar();
       /* Si llegó un mes nuevo, la ficha de TM embarcadas tiene que
          enterarse sin que nadie recargue la página. */
-      if(temporada && Object.keys(turnos).length !== antes) renderTemporada();
+      if(Object.keys(turnos).length !== antes){
+        pintarOrigenLibros();
+        if(temporada) renderTemporada();
+      }
       if(!pendientes.length) return true;
       return NUBE.subirTurnos(turnos, pendientes).then(function(ok){
         /* Que la tabla no exista todavía es lo normal hasta que alguien
@@ -1372,6 +1375,7 @@
       actualizadoEn: new Date().toISOString()
     };
     turnosGuardar();
+    pintarOrigenLibros();
     if(temporada) renderTemporada();
     /* Si la recalada abierta es de este mes y no tenía calado, ya lo tiene. */
     if(aplicarCaladoDeTurno()) calcular();
@@ -1806,7 +1810,13 @@
         avisoPuerta("", "");
         pintarPuerta();
         pintarEstadoNube();
-        return sincronizar(true).then(bajarTemporadaCompartida);
+        /* Todo lo compartido, no solo los embarques y el libro. La bitácora
+           y las planillas de turno quedaban esperando el relevo de los 60 s,
+           así que quien entraba veía la ficha de TM embarcadas en «—» y el
+           calendario sin los cierres durante un minuto, como si nadie
+           hubiera cargado nada. */
+        return Promise.all([sincronizar(true).then(bajarTemporadaCompartida),
+                            bitSincronizar(), turnosSincronizar()]);
       })
       .then(function(){ pintarEstadoNube(); })
       .catch(function(err){
@@ -2100,8 +2110,29 @@
        que revisar, o NOR que traerle al historial. La primera versión lo
        plegaba siempre y dejaba el botón de los NOR enterrado adentro. */
     if(b) b.open = !!r.avisos.length || !$("rep-acciones").hidden;
-    $("rep-origen").textContent = r.datos.recaladas.length + " recaladas · " +
-      trimestres.map(function(q){ return q.trimestre; }).join(" · ");
+    pintarOrigenLibros();
+  }
+
+  /**
+   * El rótulo del bloque, con los dos libros.
+   *
+   * Decía solo las recaladas de la reportería. Con el libro cargado y sin
+   * ninguna planilla de turno, la ficha de TM embarcadas queda en «—» y no
+   * hay cómo saber por qué: el rótulo tiene que nombrar lo que falta.
+   */
+  function pintarOrigenLibros(nota){
+    var partes = [];
+    if(temporada && temporada.datos && temporada.datos.recaladas &&
+       temporada.datos.recaladas.length){
+      partes.push(temporada.datos.recaladas.length + " recaladas");
+      var qs = (temporada.trimestres || []).map(function(q){ return q.trimestre; });
+      if(qs.length) partes.push(qs.join(" · "));
+    }
+    var meses = Object.keys(turnos || {}).length;
+    if(meses) partes.push(meses + (meses === 1 ? " mes de turno" : " meses de turno"));
+    else if(partes.length) partes.push("sin planillas de turno");
+    if(nota) partes.push(nota);
+    $("rep-origen").textContent = partes.length ? partes.join(" · ") : "sin cargar";
   }
 
   var CLAVE_TEMP = "demurrage-ppt.temporada.v1";
@@ -2146,8 +2177,7 @@
     rehidratar(crudo);
     var trimestres = TRI.porTrimestre(crudo);
     temporada = {datos: crudo, trimestres: trimestres, diagnostico: TRI.diagnostico(trimestres)};
-    $("rep-origen").textContent = crudo.recaladas.length + " recaladas · " +
-      trimestres.map(function(q){ return q.trimestre; }).join(" · ") + (nota ? " · " + nota : "");
+    pintarOrigenLibros(nota);
     var b = $("bl-reporteria");
     pintarNorPendientes();
     if(b) b.open = !$("rep-acciones").hidden;
@@ -3343,6 +3373,7 @@
   pintarUmbrales();
   bitacora = bitCargar();
   turnos = turnosCargar();
+  pintarOrigenLibros();
   $("bit-causas").innerHTML = BIT.CAUSAS.map(function(c){
     return '<option value="' + esc(c) + '"></option>';
   }).join("");
