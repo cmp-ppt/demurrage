@@ -53,8 +53,11 @@
                 "tarifaDespatch","festivos",
                 "horasMantenimientoMuellaje","horasGira","horasTotales","horasOpEfectiva",
                 /* Valores propios del RTE: se guardan y viajan a la temporada. Solo
-                   uno se edita, rteCalado, y tiene su propio enganche más abajo. */
-                "rteCalado","rtePesometro08","rtePesometro09","rteTasaEfectiva","rteTasaHora",
+                   uno se edita, rteCalado, y tiene su propio enganche más abajo.
+                   rteCaladoRte guarda el calado tal como vino en el CNN-EMB, que
+                   es provisorio: sirve para saber si lo que hay en el campo lo
+                   puso una persona o lo puso la importación. */
+                "rteCalado","rteCaladoRte","rtePesometro08","rtePesometro09","rteTasaEfectiva","rteTasaHora",
                 "rteTasaDia","rteHorasReloj","rteOrigenTonelaje"];
 
   /* ─────────────────────────── formato ─────────────────────────── */
@@ -217,7 +220,8 @@
     if(d.horasGira != null) $("horasGira").value = red2(d.horasGira);
     if(d.horasTotales != null)    $("horasTotales").value = red2(d.horasTotales);
     if(d.horasOpEfectiva != null) $("horasOpEfectiva").value = red2(d.horasOpEfectiva);
-    [["calado","rteCalado"], ["pesometro08","rtePesometro08"], ["pesometro09","rtePesometro09"],
+    [["calado","rteCalado"], ["calado","rteCaladoRte"],
+     ["pesometro08","rtePesometro08"], ["pesometro09","rtePesometro09"],
      ["tasaEfectiva","rteTasaEfectiva"], ["tasaHora","rteTasaHora"], ["tasaDia","rteTasaDia"],
      ["horasReloj","rteHorasReloj"]
     ].forEach(function(par){ $(par[1]).value = d[par[0]] == null ? "" : d[par[0]]; });
@@ -235,6 +239,7 @@
     if(r.avisos.length) html += "<ul><li>" + r.avisos.map(esc).join("</li><li>") + "</li></ul>";
     avisoImport(html, r.avisos.length ? "warn" : "ok");
     verVista("operacion");   // primero visible, luego dibujar: un panel oculto mide 0
+    aplicarCaladoDeTurno();  // el draft survey está en la planilla, no en el CNN-EMB
     calcular();
     plegarRecaladaSegunEstado();
     autoguardar();
@@ -478,8 +483,81 @@
     $("rteOrigenTonelaje").value = t.origen;
   }
 
+  /**
+   * El calado de la recalada abierta según las planillas de turno, o null.
+   *
+   * Cruza por el mismo emparejador de la conciliación, con los hitos y no
+   * solo con el nombre: tres naves de la temporada tienen dos recaladas, y
+   * ponerle a una el calado de la otra cambia el laytime sin que se note.
+   */
+  function caladoDeTurnoActual(){
+    var lista = temporada && temporada.datos ? temporada.datos.recaladas : null;
+    var nave = $("nave").value;
+    if(!nave || !lista || !lista.length) return null;
+    var par = CONC.emparejar(nave, lista, {finCarga: fh("finCarga"),
+      inicioCarga: fh("inicioCarga"), primeraEspia: fh("primeraEspia")});
+    if(!par || par.ambigua || !par.fila) return null;
+    var c = CONC.caladoDeTurno(par.fila, turnos);
+    return c && c.tm ? c : null;
+  }
+
+  /** Escribe de dónde sale el calado y cómo queda contra el BL del libro. */
+  function pintarPistaCalado(c){
+    var el = $("rteCalado-turno");
+    if(!el) return;
+    if(!c || !c.tm){ el.hidden = true; el.textContent = ""; return; }
+    var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
+    var txt = "Planilla de turno de " + c.meses.join(" + ") + ": " + mil(c.tm) + " TM" +
+      (c.partida ? ", sumando los dos meses porque la carga quedó partida" : "") + ".";
+    if(c.bl){
+      txt += " El libro declara " + mil(c.bl) + " TM de BL (" +
+        (Math.abs(c.dif) < 1 ? "coinciden"
+          : (c.dif > 0 ? "+" : "-") + mil(Math.abs(c.dif)) + " TM · " +
+            Math.abs(c.pct).toFixed(2).replace(".", ",") + " %") + ").";
+    }
+    var escrito = num("rteCalado"), delRte = num("rteCaladoRte");
+    if(escrito > 0 && Math.abs(escrito - c.tm) >= 1){
+      txt += " Lo escrito acá —" + mil(escrito) + " TM— manda sobre las dos.";
+    }else if(delRte > 0 && Math.abs(delRte - c.tm) >= 1){
+      txt += " Reemplaza las " + mil(delRte) + " TM del CNN-EMB, que son provisorias.";
+    }
+    el.textContent = txt;
+    el.hidden = false;
+  }
+
+  /**
+   * Llena el calado desde la planilla de turno si está vacío.
+   *
+   * El draft survey no viene en el CNN-EMB —llega días después en un correo
+   * de la agencia— pero sí está en la planilla de turno del mes en que
+   * terminó la carga. Dejar el campo vacío esperando el correo significa
+   * calcular el laytime con el pesómetro, que mide otra cosa.
+   *
+   * Lo escrito a mano no se toca nunca: si alguien puso una cifra, la puso
+   * por algo, y sobrescribirla con la de la planilla cambiaría el demurrage
+   * en silencio.
+   */
+  function aplicarCaladoDeTurno(){
+    var c = caladoDeTurnoActual();
+    if(!c){ pintarPistaCalado(null); return false; }
+    var hay = num("rteCalado"), delRte = num("rteCaladoRte");
+    /* Lo que escribió una persona no se toca: puede venir del correo de la
+       agencia, que es la última palabra. Lo que puso la importación sí se
+       reemplaza —el calado del CNN-EMB es el provisorio de la planilla de la
+       nave, y la de turno trae el definitivo: CHINA TRIUMPH llegó con 202.550
+       TM y su draft survey final son 200.894, las mismas del BL. */
+    var aMano = hay > 0 && !(delRte > 0 && Math.abs(hay - delRte) < 1);
+    if(aMano){ pintarPistaCalado(c); return false; }
+    if(Math.abs(hay - c.tm) < 1){ pintarPistaCalado(c); return false; }
+    $("rteCalado").value = String(Math.round(c.tm));
+    aplicarCalado();
+    pintarPistaCalado(c);
+    return true;
+  }
+
   function renderProductividad(){
     var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
+    pintarPistaCalado(caladoDeTurnoActual());
     var ton    = num("tonelaje");
     var calado = num("rteCalado");
     var p09    = num("rtePesometro09");
@@ -1103,6 +1181,7 @@
        sobrescriben, la nave importada hereda las tasas de la que esté
        cargada en el formulario. */
     c.rteCalado       = d.calado == null ? "" : String(d.calado);
+    c.rteCaladoRte    = d.calado == null ? "" : String(d.calado);
     c.rtePesometro08  = d.pesometro08 == null ? "" : String(d.pesometro08);
     c.rtePesometro09  = d.pesometro09 == null ? "" : String(d.pesometro09);
     c.rteTasaEfectiva = d.tasaEfectiva == null ? "" : String(d.tasaEfectiva);
@@ -1262,6 +1341,8 @@
     };
     turnosGuardar();
     if(temporada) renderTemporada();
+    /* Si la recalada abierta es de este mes y no tenía calado, ya lo tiene. */
+    if(aplicarCaladoDeTurno()) calcular();
 
     var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
     var html = "<strong>" + MES[r.periodo.mes] + " " + r.periodo.anio + "</strong>: " +
@@ -1939,6 +2020,9 @@
     var trimestres = TRI.porTrimestre(r.datos);
     temporada = {datos: r.datos, trimestres: trimestres, diagnostico: TRI.diagnostico(trimestres)};
     guardarTemporada();
+    /* El libro es lo que permite cruzar la recalada abierta con la planilla:
+       el calado sale del mes de cierre, y el mes de cierre lo da el libro. */
+    if(aplicarCaladoDeTurno()) calcular();
 
     var html = "<strong>" + esc(nombre || "Libro") + "</strong>: " +
       r.datos.recaladas.length + " recaladas en " + trimestres.length +

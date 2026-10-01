@@ -522,6 +522,69 @@ function chequear(nombre, ok, detalle){
       await pagina.waitForTimeout(400);
       sinErrores("la ficha con planilla de turno");
 
+      /* ── El calado de la nave, desde la planilla ──
+         El CNN-EMB trae el calado provisorio de la planilla de la nave; el
+         draft survey final está en la de turno. Para cruzarlos hace falta una
+         nave que esté en el libro, así que se cambia el formulario a una de
+         las del fixture y se deja como estaba al terminar. */
+      var antesForm = await pagina.evaluate(function(){
+        var g = function(id){ return document.getElementById(id).value; };
+        return {nave:g("nave"), fin:g("finCarga"), cal:g("rteCalado"),
+                rte:g("rteCaladoRte"), ton:g("tonelaje")};
+      });
+      await pagina.evaluate(function(){
+        var p = function(id, v){ document.getElementById(id).value = v; };
+        p("nave", "NAVE DE PRUEBA 2"); p("finCarga", "2026-01-08T10:00");
+        p("rteCalado", ""); p("rteCaladoRte", "");
+      });
+      await pagina.setInputFiles("#archivo-rep", enero);
+      await pagina.waitForTimeout(1500);
+      var leerCalado = function(){
+        return pagina.evaluate(function(){
+          return {cal: document.getElementById("rteCalado").value,
+                  ton: document.getElementById("tonelaje").value,
+                  origen: document.getElementById("rteOrigenTonelaje").value,
+                  pista: document.getElementById("rteCalado-turno").textContent};
+        });
+      };
+      /* 120.000 de pellet más 82.000 de sinter: 202.000, que es el BL de esa
+         fila del libro. */
+      var deLaPlanilla = await leerCalado();
+      chequear("el calado sale de la planilla del mes de cierre",
+        deLaPlanilla.cal === "202000" && deLaPlanilla.ton === "202000",
+        JSON.stringify(deLaPlanilla));
+      /* Y pasa a ser el tonelaje del cálculo, que es para lo que sirve: el
+         laytime son esas toneladas divididas por la tasa del contrato. */
+      chequear("y queda como tonelaje del cálculo, marcado como calado",
+        deLaPlanilla.origen === "calado", deLaPlanilla.origen);
+      chequear("la pista nombra el mes y lo compara con el BL",
+        /2026-01/.test(deLaPlanilla.pista) && /coinciden/.test(deLaPlanilla.pista),
+        deLaPlanilla.pista);
+
+      /* Lo que escribió una persona no se pisa: puede venir del correo de la
+         agencia, que es la última palabra. */
+      await pagina.evaluate(function(){
+        var e = document.getElementById("rteCalado");
+        e.value = "195000"; e.dispatchEvent(new Event("change", {bubbles:true}));
+      });
+      await pagina.waitForTimeout(700);
+      await pagina.setInputFiles("#archivo-rep", enero);
+      await pagina.waitForTimeout(1500);
+      var aMano = await leerCalado();
+      chequear("lo escrito a mano no lo pisa la planilla",
+        aMano.cal === "195000", JSON.stringify(aMano));
+      chequear("y la pista dice que manda lo escrito",
+        /manda sobre las dos/.test(aMano.pista), aMano.pista);
+
+      await pagina.evaluate(function(v){
+        var p = function(id, x){ document.getElementById(id).value = x; };
+        p("nave", v.nave); p("finCarga", v.fin); p("rteCalado", v.cal);
+        p("rteCaladoRte", v.rte); p("tonelaje", v.ton);
+      }, antesForm);
+      await pagina.click("#btn-calcular");
+      await pagina.waitForTimeout(600);
+      sinErrores("el calado desde la planilla de turno");
+
       /* Soltar en esa misma zona un libro que no es ninguno de los dos
          borraba la temporada cargada: REP no encontraba la hoja de recaladas
          y la dejaba en cero sin que nadie lo pidiera. */

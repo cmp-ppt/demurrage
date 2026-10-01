@@ -226,6 +226,9 @@
               <div class="campo"><label for="rteCalado">Calado · draft survey</label>
                 <span class="con-unidad"><input type="number" id="rteCalado" step="1" min="0"><span class="unidad">TM</span></span>
                 <div class="pista">Llega por correo de la agencia días después del embarque. Escrito acá manda sobre el pesómetro y pasa a ser el tonelaje del cálculo.</div>
+                <!-- Y si la planilla de turno del mes ya está cargada, el
+                     calado sale de ahí y esta línea dice de qué mes. -->
+                <div class="pista" id="rteCalado-turno" hidden></div>
               </div>
             </div>
 
@@ -263,7 +266,7 @@
           <input type="hidden" id="rtePesometro08">
           <input type="hidden" id="rtePesometro09"><input type="hidden" id="rteTasaEfectiva">
           <input type="hidden" id="rteTasaHora"><input type="hidden" id="rteTasaDia">
-          <input type="hidden" id="rteHorasReloj"><input type="hidden" id="rteOrigenTonelaje">
+          <input type="hidden" id="rteHorasReloj"><input type="hidden" id="rteOrigenTonelaje"><input type="hidden" id="rteCaladoRte">
 
           </div>
       </div>

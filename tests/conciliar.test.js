@@ -398,5 +398,80 @@ chequear("sin fin de carguío, manda el atraque",
   C.embarcadoDeTurno([{atb:F("2026-08-30"), nor:F("2026-08-14")}], planillas).meses[0],
   "2026-08");
 
+/* ---------------------------------------------------------------- */
+bloque("El calado de una nave según las planillas de turno");
+/* Las cifras son las de la temporada 2026, que es la única forma de probar
+   esto: la regla salió de contrastar las nueve planillas contra las 33 filas
+   del libro, y una planilla inventada no tiene ese contraste. */
+var hojas = {
+  "2026-03": {porNave: [{clave:"NEGONEGO", tm:119720}]},
+  "2026-04": {porNave: [{clave:"NEGONEGO", tm:84006}, {clave:"MINERAL NAMIBIA", tm:115584}]},
+  "2026-05": {porNave: [{clave:"MINERAL NAMIBIA", tm:89078}, {clave:"PIGI", tm:27648}]},
+  "2026-06": {porNave: [{clave:"PIGI", tm:46981}]},
+  "2026-07": {porNave: [{clave:"PAN UNIVERSAL", tm:28312}]},
+  "2026-08": {porNave: [{clave:"PAN UNIVERSAL", tm:203105}, {clave:"CHINA TRIUMPH", tm:41168}]},
+  "2026-09": {porNave: [{clave:"CHINA TRIUMPH", tm:200894}, {clave:"MINERAL COMOROS", tm:207411}]}
+};
+function cal(nave, cargo, fin){
+  return C.caladoDeTurno({nave:nave, cargo:cargo, finCarga:F(fin)}, hojas);
+}
+
+/* El caso simple: la nave cargó dentro del mes y la planilla trae su cifra. */
+chequear("el mes de cierre manda", cal("MINERAL COMOROS", 206000, "2026-09-24").tm, 207411);
+chequear("y no se marca partida", cal("MINERAL COMOROS", 206000, "2026-09-24").partida, false);
+/* Las 1.411 t de diferencia contra el BL son draft survey contra Bill of
+   Lading: la cifra se entrega igual, con la diferencia dicha. */
+chequear("la diferencia contra el BL queda a la vista",
+  Math.round(cal("MINERAL COMOROS", 206000, "2026-09-24").dif), 1411);
+
+/* La planilla del mes de cierre arrastra el viaje completo, no el saldo:
+   PAN UNIVERSAL lleva 28.312 t en julio y las 203.105 de agosto son su BL
+   exacto. Sumar los dos meses le pondría 28.312 t que no cargó. */
+chequear("el mes anterior no se suma cuando el de cierre ya trae todo",
+  cal("PAN UNIVERSAL", 203105, "2026-08-20").tm, 203105);
+chequear("CHINA TRIUMPH igual", cal("CHINA TRIUMPH", 200894, "2026-09-05").tm, 200894);
+chequear("y es su BL al kilo", cal("CHINA TRIUMPH", 200894, "2026-09-05").dif, 0);
+
+/* Pero hay meses en que se anotó solo el saldo. A MINERAL NAMIBIA el mes de
+   cierre le deja 89.078 de 204.662: más de la mitad de la carga afuera. */
+var nam = cal("MINERAL NAMIBIA", 204662, "2026-05-02");
+chequear("la carga partida se suma", nam.tm, 204662);
+chequear("y se dice que viene de dos meses", nam.partida, true);
+chequear("con los dos meses nombrados", nam.meses.join(","), "2026-04,2026-05");
+var neg = cal("NEGONEGO", 203301, "2026-04-03");
+chequear("NEGONEGO también", neg.tm, 203726);
+chequear("y queda marcada", neg.partida, true);
+
+/* Lo que separa los dos casos es el BL, que no sale de la planilla. Sin esa
+   tercera cifra no hay forma de distinguirlos, y entonces se toma el mes de
+   cierre tal como está en vez de inventar una suma. */
+chequear("sin BL no se arma una suma", cal("MINERAL NAMIBIA", 0, "2026-05-02").tm, 89078);
+chequear("ni se marca partida", cal("MINERAL NAMIBIA", 0, "2026-05-02").partida, false);
+
+/* Tres viajes de la misma nave en la temporada: PIGI cerró en junio con
+   46.981 —su BL— y el mes anterior trae 27.648 del mismo viaje. */
+chequear("PIGI de junio no arrastra mayo", cal("PIGI", 46981, "2026-06-12").tm, 46981);
+
+/* Sin planilla del mes de cierre no se estima: se dice cuál falta. */
+var sinHoja = cal("JUDD", 203513, "2026-02-10");
+chequear("sin planilla del mes, no hay cifra", sinHoja.tm, null);
+chequear("y se nombra el mes que falta",
+  sinHoja.motivo.indexOf("2026-02") > 0, true);
+/* Con la planilla pero sin la nave, el reparo es otro: hay que revisar cómo
+   quedó escrito el nombre, no ir a buscar un archivo. */
+var sinNave = cal("MINERAL BOTSWANA", 204968, "2026-09-10");
+chequear("la planilla que no nombra la nave lo dice",
+  sinNave.motivo.indexOf("no nombra") > 0, true);
+chequear("sin fin de carguío no hay mes de cierre",
+  C.caladoDeTurno({nave:"PIGI", cargo:46981}, hojas), null);
+chequear("sin argumentos no revienta", C.caladoDeTurno(), null);
+
+/* El prefijo del CNN-EMB contra el nombre pelado de la planilla. */
+chequear("MN delante no impide el cruce", cal("MN CHINA TRIUMPH", 200894, "2026-09-05").tm, 200894);
+
+chequear("el mes anterior a enero es diciembre", C.mesAnterior("2026-01"), "2025-12");
+chequear("y dentro del año baja uno", C.mesAnterior("2026-09"), "2026-08");
+chequear("basura no da mes", C.mesAnterior("x"), null);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

@@ -509,13 +509,93 @@
             completo: orden.length > 0 && faltan.length === 0};
   }
 
+  /** El mes anterior a una clave «YYYY-MM». */
+  function mesAnterior(k){
+    var m = /^(\d{4})-(\d{2})$/.exec(String(k || ""));
+    if(!m) return null;
+    var anio = +m[1], mes = +m[2] - 1;
+    if(mes === 0){ anio--; mes = 12; }
+    return anio + "-" + String(mes).padStart(2, "0");
+  }
+
+  /** Lo que una planilla de turno anotó para una nave en un mes, o null. */
+  function tmEnMes(porMes, clave, nave){
+    var m = porMes && porMes[clave];
+    var lista = (m && m.porNave) || [];
+    for(var i = 0; i < lista.length; i++){
+      var c = lista[i].clave || normalizar(lista[i].nave);
+      if(normalizar(c) === nave) return Number(lista[i].tm) || 0;
+    }
+    return null;
+  }
+
+  /**
+   * El calado de una recalada según las planillas de turno.
+   *
+   * La hoja «ACUMULADO EMBARQUE» anota el tonelaje de cada nave mes a mes, y
+   * la cifra que hay que tomar es la del mes en que TERMINÓ la carga. Eso
+   * resuelve 30 de las 32 recaladas de la temporada al kilo o con la
+   * diferencia normal del draft survey: PAN UNIVERSAL lleva 28.312 t en
+   * julio y 203.105 en agosto, y las 203.105 son su BL exacto —la planilla
+   * del mes de cierre arrastra el acumulado del viaje completo, no el saldo.
+   *
+   * Pero no siempre: hay meses en que quien llenó la planilla anotó solo el
+   * saldo. MINERAL NAMIBIA son 115.584 t en abril y 89.078 en mayo, y su BL
+   * son las 204.662 de la suma; NEGONEGO igual entre marzo y abril. Con el
+   * mes de cierre solo, a esas dos les faltaría más de la mitad de la carga.
+   *
+   * Los dos casos se distinguen sin adivinar, porque hay una tercera cifra
+   * que no sale de la planilla: el Bill of Lading del libro. Si el mes de
+   * cierre se queda corto contra el BL y sumarle el mes anterior lo deja al
+   * lado, la carga venía partida entre dos planillas. No es elegir el
+   * número que conviene: es elegir entre dos lecturas de la planilla usando
+   * una medición independiente, y el resultado queda dicho —`partida`— para
+   * que se pueda revisar.
+   *
+   * Devuelve null cuando no hay con qué: sin planilla del mes de cierre, o
+   * con una planilla que no nombra la nave.
+   */
+  function caladoDeTurno(fila, porMes){
+    if(!fila || !porMes) return null;
+    var cierre = claveMes(fila.finCarga);
+    if(!cierre) return null;
+    var nave = normalizar(fila.nave);
+    var tm = tmEnMes(porMes, cierre, nave);
+    if(tm === null || tm <= 0){
+      return {tm: null, meses: [], partida: false, bl: Number(fila.cargo) || 0,
+              motivo: porMes[cierre]
+                ? "la planilla de " + cierre + " no nombra a " + fila.nave
+                : "falta la planilla de turno de " + cierre};
+    }
+
+    var bl = Number(fila.cargo) || 0;
+    var previo = mesAnterior(cierre);
+    var antes = tmEnMes(porMes, previo, nave);
+    var meses = [cierre], partida = false;
+    /* El 10 % y el 2 % no son finos a propósito: la diferencia entre las dos
+       lecturas es media carga —115.584 contra 204.662— y la del draft survey
+       contra el BL no pasó del 0,7 % en toda la temporada. Entre esos dos
+       órdenes de magnitud no hay caso dudoso que afinar. */
+    if(antes !== null && antes > 0 && bl > 0 &&
+       tm < bl * 0.9 && Math.abs(tm + antes - bl) <= bl * 0.02){
+      tm += antes;
+      meses = [previo, cierre];
+      partida = true;
+    }
+
+    var dif = bl ? tm - bl : 0;
+    return {tm: tm, meses: meses, partida: partida, bl: bl, dif: dif,
+            pct: bl ? dif / bl * 100 : 0, motivo: ""};
+  }
+
   var api = {normalizar: normalizar, distancia: distancia, emparejar: emparejar,
              emparejarPlan: emparejarPlan,
              actualizarNor: actualizarNor, aCampo: aCampo,
              conciliar: conciliar, netoLiquidado: netoLiquidado,
              datosDeContrato: datosDeContrato,
              tonelajeEmbarcado: tonelajeEmbarcado,
-             claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno};
+             claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno,
+             mesAnterior: mesAnterior, caladoDeTurno: caladoDeTurno};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 
