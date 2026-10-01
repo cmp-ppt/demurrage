@@ -61,7 +61,13 @@
                 "rteTasaDia","rteHorasReloj","rteOrigenTonelaje",
                 /* Las tres cifras del muellaje tal como las trae la hoja
                    MUELLAJE del CNN-EMB: son las que se muestran. */
-                "rteHorasMuellaje","rteNwh","rteMuellajeUsd"];
+                "rteHorasMuellaje","rteNwh","rteMuellajeUsd",
+                /* «1» cuando el calado lo escribió una persona. Antes esto se
+                   deducía comparando contra el valor del CNN-EMB, y un
+                   registro guardado antes de que existiera esa comparación
+                   —toda la flota ya cargada— parecía escrito a mano y la
+                   planilla no lo tocaba nunca. */
+                "rteCaladoMano"];
 
   /* ─────────────────────────── formato ─────────────────────────── */
 
@@ -545,14 +551,16 @@
   function aplicarCaladoDeTurno(){
     var c = caladoDeTurnoActual();
     if(!c){ pintarPistaCalado(null); return false; }
-    var hay = num("rteCalado"), delRte = num("rteCaladoRte");
-    /* Lo que escribió una persona no se toca: puede venir del correo de la
-       agencia, que es la última palabra. Lo que puso la importación sí se
-       reemplaza —el calado del CNN-EMB es el provisorio de la planilla de la
-       nave, y la de turno trae el definitivo: CHINA TRIUMPH llegó con 202.550
-       TM y su draft survey final son 200.894, las mismas del BL. */
-    var aMano = hay > 0 && !(delRte > 0 && Math.abs(hay - delRte) < 1);
-    if(aMano){ pintarPistaCalado(c); return false; }
+    var hay = num("rteCalado");
+    /* Manda la planilla salvo que una persona haya escrito el calado a mano,
+       y eso se sabe por la marca, no por deducción. La regla anterior
+       comparaba contra el valor del CNN-EMB: un registro guardado antes de
+       que esa comparación existiera no lo trae, parecía escrito a mano, y la
+       planilla no lo tocaba nunca —que es justo lo que pasa con una flota ya
+       cargada. El calado del CNN-EMB es el provisorio de la planilla de la
+       nave; el de turno es el definitivo: CHINA TRIUMPH llegó con 202.550 TM
+       y su draft survey final son 200.894, las mismas del BL. */
+    if($("rteCaladoMano").value === "1"){ pintarPistaCalado(c); return false; }
     if(Math.abs(hay - c.tm) < 1){ pintarPistaCalado(c); return false; }
     $("rteCalado").value = String(Math.round(c.tm));
     aplicarCalado();
@@ -578,16 +586,31 @@
       : (p08 ? "CT-08 " + mil(p08) + " TM" : "CT-08 sin registro");
 
     $("p-calado").textContent = calado ? mil(calado) : "—";
+    /* De dónde sale esta cifra, escrito en la ficha. Sin esto, un calado que
+       coincide con el pesómetro —porque el CNN-EMB trae el provisorio— se lee
+       como si la app estuviera repitiendo el mismo número en dos fichas. */
+    var deTurnoCal = caladoDeTurnoActual();
+    var fuente = $("rteCaladoMano").value === "1" ? "escrito a mano"
+      : (deTurnoCal && calado && Math.abs(deTurnoCal.tm - calado) < 1)
+        ? "planilla de turno · " + deTurnoCal.meses.join(" + ")
+        : (calado && num("rteCaladoRte") > 0 && Math.abs(num("rteCaladoRte") - calado) < 1)
+          ? "provisorio del CNN-EMB" : "";
     if(calado && p09){
       var dif = calado - p09, pctDif = dif / p09 * 100;
-      $("p-calado-sub").textContent = (dif >= 0 ? "+" : "") + mil(dif) + " TM (" +
+      $("p-calado-sub").textContent = (fuente ? fuente + " · " : "") +
+        (dif >= 0 ? "+" : "") + mil(dif) + " TM (" +
         (dif >= 0 ? "+" : "") + pct(pctDif) + ") contra el pesómetro";
       // Media unidad porcentual entre correa y draft survey ya es diferencia a explicar.
       $("p-calado-sub").style.color = Math.abs(pctDif) > 0.5 ? AVISO : "";
     }else{
-      $("p-calado-sub").textContent = calado ? "sin pesómetro con que contrastar" : "no viene en el libro";
+      $("p-calado-sub").textContent = calado
+        ? (fuente || "sin pesómetro con que contrastar") : "no viene en el libro";
       $("p-calado-sub").style.color = "";
     }
+    /* Y en ámbar cuando sigue siendo el provisorio: es la señal de que falta
+       cargar la planilla de ese mes. */
+    $("kpi-calado").querySelector(".ico-marca").style.color =
+      fuente === "provisorio del CNN-EMB" ? AVISO : "";
 
     /* La ficha «Tonelaje del cálculo» se retiró: repetía la cifra del calado
        —o la del pesómetro cuando no hay calado— y la ficha del laytime ya
@@ -1227,6 +1250,7 @@
        cargada en el formulario. */
     c.rteCalado       = d.calado == null ? "" : String(d.calado);
     c.rteCaladoRte    = d.calado == null ? "" : String(d.calado);
+    c.rteCaladoMano   = "";          // lo trajo el CNN-EMB, no lo escribió nadie
     c.rteHorasMuellaje = d.horasMuellajeLibro == null ? "" : String(d.horasMuellajeLibro);
     c.rteNwh          = d.nwhLibro == null ? "" : String(d.nwhLibro);
     c.rteMuellajeUsd  = d.muellajeLibro == null ? "" : String(d.muellajeLibro);
@@ -2031,6 +2055,10 @@
     alternarPermitido();
     alternarDespatch();
     verVista("operacion");
+    /* El calado de la nave que se acaba de elegir sale de la planilla de su
+       mes, no del CNN-EMB. Sin esto, abrir una nave del historial mostraba
+       la cifra provisoria con la que se guardó. */
+    aplicarCaladoDeTurno();
     calcular();
     plegarRecaladaSegunEstado();
   }
@@ -3084,12 +3112,19 @@
     /* El calado es el único rte* que se edita: el bucle de arriba los salta
        a todos, así que va suelto. Antes de recalcular reescribe el tonelaje,
        o el laytime seguiría saliendo del pesómetro. */
+    function caladoEscrito(){
+      /* Escribir el calado es declarar que esa cifra manda: viene del correo
+         de la agencia y le gana a la planilla. Se deja marcado en el
+         registro, no se deduce después. Borrarlo suelta la marca y la
+         planilla vuelve a mandar. */
+      $("rteCaladoMano").value = num("rteCalado") > 0 ? "1" : "";
+    }
     $("rteCalado").addEventListener("change", function(){
-      clearTimeout(pendiente); aplicarCalado(); calcular();
+      clearTimeout(pendiente); caladoEscrito(); aplicarCalado(); calcular();
     });
     $("rteCalado").addEventListener("input", function(){
       clearTimeout(pendiente);
-      pendiente = setTimeout(function(){ aplicarCalado(); calcular(); }, 400);
+      pendiente = setTimeout(function(){ caladoEscrito(); aplicarCalado(); calcular(); }, 400);
     });
   })();
 
@@ -3504,6 +3539,9 @@
   alternarPermitido();
   alternarDespatch();
   if(habia){
+    /* Igual que al elegir una nave: el calado sale de la planilla de su mes.
+       La recalada restaurada se guardó con la cifra provisoria del CNN-EMB. */
+    aplicarCaladoDeTurno();
     calcular();
     plegarRecaladaSegunEstado();
   }else{

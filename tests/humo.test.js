@@ -539,12 +539,16 @@ function chequear(nombre, ok, detalle){
       var antesForm = await pagina.evaluate(function(){
         var g = function(id){ return document.getElementById(id).value; };
         return {nave:g("nave"), fin:g("finCarga"), cal:g("rteCalado"),
-                rte:g("rteCaladoRte"), ton:g("tonelaje")};
+                rte:g("rteCaladoRte"), ton:g("tonelaje"), mano:g("rteCaladoMano")};
       });
+      /* Una recalada sin calado y sin marca de escritura a mano: el estado en
+         que llega una nave recién importada. La marca quedó puesta más arriba
+         al escribir 180.000 a mano, y mientras esté puesta la planilla no
+         pisa el campo, que es justo lo que se quiere. */
       await pagina.evaluate(function(){
         var p = function(id, v){ document.getElementById(id).value = v; };
         p("nave", "NAVE DE PRUEBA 2"); p("finCarga", "2026-01-08T10:00");
-        p("rteCalado", ""); p("rteCaladoRte", "");
+        p("rteCalado", ""); p("rteCaladoRte", ""); p("rteCaladoMano", "");
       });
       await pagina.setInputFiles("#archivo-rep", enero);
       await pagina.waitForTimeout(1500);
@@ -570,12 +574,35 @@ function chequear(nombre, ok, detalle){
         /2026-01/.test(deLaPlanilla.pista) && /coinciden/.test(deLaPlanilla.pista),
         deLaPlanilla.pista);
 
+      /* El caso que motivó la marca: un registro guardado ANTES de que
+         existiera, con el calado provisorio del CNN-EMB ya escrito en el
+         campo. Sin marca no es «a mano», y la planilla tiene que pisarlo:
+         si no, una flota ya cargada se queda para siempre mostrando el
+         provisorio —que en estos libros es la cifra del pesómetro. */
+      await pagina.evaluate(function(){
+        var p = function(id, v){ document.getElementById(id).value = v; };
+        p("rteCalado", "202550"); p("rteCaladoRte", ""); p("rteCaladoMano", "");
+      });
+      await pagina.setInputFiles("#archivo-rep", enero);
+      await pagina.waitForTimeout(1500);
+      var viejo = await leerCalado();
+      chequear("un registro viejo sin marca lo pisa la planilla",
+        viejo.cal === "202000", JSON.stringify(viejo));
+
       /* Lo que escribió una persona no se pisa: puede venir del correo de la
-         agencia, que es la última palabra. */
+         agencia, que es la última palabra. Escribirlo deja la marca, y la
+         marca es lo que lo protege —antes se deducía comparando contra el
+         valor del CNN-EMB, y un registro guardado sin esa comparación
+         parecía escrito a mano para siempre. */
       await pagina.evaluate(function(){
         var e = document.getElementById("rteCalado");
         e.value = "195000"; e.dispatchEvent(new Event("change", {bubbles:true}));
       });
+      await pagina.waitForTimeout(400);
+      chequear("escribir el calado deja la marca de «a mano»",
+        await pagina.evaluate(function(){
+          return document.getElementById("rteCaladoMano").value;
+        }) === "1", "marca");
       await pagina.waitForTimeout(700);
       await pagina.setInputFiles("#archivo-rep", enero);
       await pagina.waitForTimeout(1500);
@@ -588,7 +615,7 @@ function chequear(nombre, ok, detalle){
       await pagina.evaluate(function(v){
         var p = function(id, x){ document.getElementById(id).value = x; };
         p("nave", v.nave); p("finCarga", v.fin); p("rteCalado", v.cal);
-        p("rteCaladoRte", v.rte); p("tonelaje", v.ton);
+        p("rteCaladoRte", v.rte); p("tonelaje", v.ton); p("rteCaladoMano", v.mano);
       }, antesForm);
       await pagina.click("#btn-calcular");
       await pagina.waitForTimeout(600);
