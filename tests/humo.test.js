@@ -17,7 +17,8 @@
  * Necesita Playwright y un servidor local. Si falta alguno se omite sin
  * fallar, para que la suite siga corriendo donde no hay navegador.
  */
-var fs = require("fs"), path = require("path"), http = require("http");
+var fs = require("fs"), path = require("path"), http = require("http"), os = require("os");
+var XLSX = require("../js/vendor/xlsx.full.min.js");
 var raiz = path.join(__dirname, "..");
 
 var chromium;
@@ -446,6 +447,98 @@ function chequear(nombre, ok, detalle){
       await pagina.waitForTimeout(400);
     }
     sinErrores("filtrar la temporada");
+
+    /* ── La planilla de turno, de punta a punta ──
+       El calado definitivo no está en el libro ni en el CNN-EMB: llega días
+       después en la planilla de turno, hoja «ACUMULADO EMBARQUE». Se arma acá
+       y se suelta en la zona de la reportería, que es donde la persona la va a
+       soltar: el libro se reconoce por sus hojas, no por el botón que se
+       apretó. Se arma a mano porque no se versionan planillas de operación. */
+    if(hayRep){
+      var tmp = fs.mkdtempSync(path.join(os.tmpdir(), "turno-"));
+      var planilla = function(nombre, filas){
+        var wb = XLSX.utils.book_new();
+        /* La hoja real deja la columna A vacía y parte en la B. */
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(filas.map(function(f){
+          return [null].concat(f);
+        })), "ACUMULADO EMBARQUE");
+        var f = path.join(tmp, nombre);
+        fs.writeFileSync(f, Buffer.from(XLSX.write(wb, {type:"array", bookType:"xlsx"})));
+        return f;
+      };
+      /* Enero: cuatro naves, una de ellas con los dos productos. Y un bloque
+         de concentrado de cobre, que no entra —sus naves no están en el libro
+         de demurrage— y que si entrara dejaría el total en 834.000. */
+      var enero = planilla("DATOS_TURNO_PPT_31-01-2026.xlsx", [
+        ["Tonelaje acumulado Mes"],
+        ["Pellet Feed", "PM", "CNN", "TOTAL"],
+        ["NAVE DE PRUEBA 2", null, null, 120000],
+        ["NAVE DE PRUEBA 3", null, null, 203000],
+        ["NAVE DE PRUEBA 4", null, null, 204000],
+        ["NAVE DE PRUEBA 5", null, null, 205000],
+        ["TOTAL", null, null, 732000],
+        [],
+        ["Sinter Feed", "Cancha 1", "Cancha 3", "HSF"],
+        ["NAVE DE PRUEBA 2", null, null, 82000],
+        ["TOTAL", null, null, 82000],
+        [],
+        ["Concentrado de cobre", null, null, "CONCU"],
+        ["GINKGO ARROW", null, null, 20000],
+        ["TOTAL", null, null, 20000]
+      ]);
+      var febrero = planilla("DATOS_TURNO_PPT_28-02-2026.xlsx", [
+        ["Tonelaje acumulado Mes"],
+        ["Pellet Feed", "PM", "CNN", "TOTAL"],
+        ["NAVE DE PRUEBA 6", null, null, 206000],
+        ["TOTAL", null, null, 206000]
+      ]);
+      await pagina.setInputFiles("#archivo-rep", enero);
+      await pagina.waitForTimeout(1200);
+      await pagina.setInputFiles("#archivo-rep", febrero);
+      await pagina.waitForTimeout(1200);
+      sinErrores("cargar las planillas de turno");
+
+      var leerFicha = function(){
+        return pagina.evaluate(function(){
+          return {valor: document.getElementById("t-embarcado").textContent.trim(),
+                  sub: document.getElementById("t-embarcado-sub").textContent};
+        });
+      };
+      var conTurno = await leerFicha();
+      /* 814.000 de enero más 206.000 de febrero. El concentrado queda fuera. */
+      chequear("con las dos planillas, el total del periodo sale de ellas",
+        conTurno.valor === "1.020.000", JSON.stringify(conTurno));
+      chequear("y la ficha dice de dónde sale la cifra",
+        /planillas de turno/.test(conTurno.sub), conTurno.sub);
+
+      await pagina.selectOption("#filtro-mes", "0");
+      await pagina.waitForTimeout(500);
+      var soloEnero = await leerFicha();
+      chequear("filtrando enero, queda el mes de su planilla",
+        soloEnero.valor === "814.000", JSON.stringify(soloEnero));
+      chequear("y se nombra el calado del mes",
+        soloEnero.sub.indexOf("planilla de turno") === 0, soloEnero.sub);
+      await pagina.selectOption("#filtro-mes", "");
+      await pagina.waitForTimeout(400);
+      sinErrores("la ficha con planilla de turno");
+
+      /* Soltar en esa misma zona un libro que no es ninguno de los dos
+         borraba la temporada cargada: REP no encontraba la hoja de recaladas
+         y la dejaba en cero sin que nadie lo pidiera. */
+      var ajeno = path.join(tmp, "cualquier-cosa.xlsx");
+      var wbAjeno = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wbAjeno, XLSX.utils.aoa_to_sheet([["hola"]]), "Hoja1");
+      fs.writeFileSync(ajeno, Buffer.from(XLSX.write(wbAjeno, {type:"array", bookType:"xlsx"})));
+      await pagina.setInputFiles("#archivo-rep", ajeno);
+      await pagina.waitForTimeout(1200);
+      var tras = await pagina.evaluate(function(){
+        return {hero: document.getElementById("temp-hero-val").textContent,
+                naves: document.getElementById("t-recaladas").textContent.trim()};
+      });
+      chequear("un libro ajeno no borra la temporada",
+        tras.hero === pintada && tras.naves === "5", JSON.stringify(tras));
+      sinErrores("soltar un libro que no es ninguno de los dos");
+    }
 
     /* `con-chispa` viene del HTML y abre la fila donde se dibuja la chispa,
        pero renderTemporada reescribe el className entero de la ficha para

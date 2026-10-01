@@ -354,5 +354,49 @@ chequear("sin argumentos no revienta", C.tonelajeEmbarcado().total, 0);
 chequear("sin tonelaje de ningún tipo no suma",
   C.tonelajeEmbarcado(libroMes, [cnn("MN CHINA TRIUMPH", "2026-09-05T13:30", {})]).conDato, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("Toneladas del periodo según las planillas de turno");
+/* Cuando están las planillas del mes, la cifra es exacta: la hoja
+   «ACUMULADO EMBARQUE» es la fuente del draft survey. Sumar nave por nave
+   da casi lo mismo —0,06 % en la temporada— pero «casi» no se presenta. */
+var sept = [
+  {trimestre:"Q3", nave:"CHINA TRIUMPH", cargo:200894, finCarga:F("2026-09-05")},
+  {trimestre:"Q3", nave:"MINERAL COMOROS", cargo:206000, finCarga:F("2026-09-24")}
+];
+var planillas = {"2026-09": {totalMineral: 813584}, "2026-08": {totalMineral: 837421}};
+var unMes = C.embarcadoDeTurno(sept, planillas);
+chequear("un solo mes, la cifra de su planilla", unMes.total, 813584);
+chequear("y queda completo", unMes.completo, true);
+chequear("sin meses que falten", unMes.faltan.length, 0);
+
+/* Dos meses: se suman las dos planillas. */
+var dosMeses = C.embarcadoDeTurno(sept.concat([
+  {trimestre:"Q3", nave:"PAN UNIVERSAL", cargo:203105, finCarga:F("2026-08-20")}
+]), planillas);
+chequear("dos meses se suman", dosMeses.total, 813584 + 837421);
+chequear("y los nombra en orden", dosMeses.meses.join(","), "2026-08,2026-09");
+
+/* La guarda que importa: con una planilla faltando, el total daría de menos
+   sin decirlo. Se marca incompleto para que la ficha caiga al otro camino. */
+var incompleto = C.embarcadoDeTurno(sept.concat([
+  {trimestre:"Q3", nave:"JUDD", cargo:203513, finCarga:F("2026-06-10")}
+]), planillas);
+chequear("con un mes sin planilla, incompleto", incompleto.completo, false);
+chequear("y dice cuál falta", incompleto.faltan.join(","), "2026-06");
+chequear("sin planillas, nada completo", C.embarcadoDeTurno(sept, {}).completo, false);
+chequear("sin recaladas tampoco", C.embarcadoDeTurno([], planillas).completo, false);
+chequear("sin argumentos no revienta", C.embarcadoDeTurno().total, 0);
+
+/* El mes sale del fin de carguío, no del NOR: una nave que empieza en
+   agosto y termina en septiembre embarcó contra la planilla de septiembre,
+   que es donde su tonelaje quedó anotado. */
+chequear("el mes lo fija el fin de carguío",
+  C.embarcadoDeTurno([{finCarga:F("2026-09-05"), nor:F("2026-08-14")}], planillas).meses[0],
+  "2026-09");
+/* Y si no hay fin de carguío todavía, se cae al atraque y luego al NOR. */
+chequear("sin fin de carguío, manda el atraque",
+  C.embarcadoDeTurno([{atb:F("2026-08-30"), nor:F("2026-08-14")}], planillas).meses[0],
+  "2026-08");
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

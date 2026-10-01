@@ -470,12 +470,52 @@
     return out;
   }
 
+  /** Clave de mes «YYYY-MM» de una fecha, en hora local. */
+  function claveMes(d){
+    var f = aFecha(d);
+    if(!f) return null;
+    return f.getFullYear() + "-" + String(f.getMonth() + 1).padStart(2, "0");
+  }
+
+  /**
+   * Toneladas del periodo según las planillas de turno.
+   *
+   * Es la cifra exacta cuando está: la hoja «ACUMULADO EMBARQUE» registra el
+   * tonelaje embarcado dentro de cada mes y es la fuente del draft survey.
+   * Sumar el calado nave por nave da casi lo mismo —0,06 % en una temporada
+   * de 5,6 millones— pero «casi» no sirve para presentar un embarque.
+   *
+   * Solo se usa si están TODAS las planillas de los meses del periodo. Con
+   * una faltando, el total mezclaría meses medidos con meses ausentes y
+   * daría de menos sin decirlo, que es la peor forma de equivocarse: hacia
+   * abajo y en silencio.
+   */
+  function embarcadoDeTurno(recaladas, porMes){
+    var meses = {}, orden = [];
+    (recaladas || []).forEach(function(r){
+      var k = claveMes(r && (r.finCarga || r.atb || r.nor || r.eta));
+      if(!k || meses[k]) return;
+      meses[k] = true; orden.push(k);
+    });
+    orden.sort();
+
+    var total = 0, tengo = [], faltan = [];
+    orden.forEach(function(k){
+      var m = porMes && porMes[k];
+      if(m && typeof m.totalMineral === "number"){ total += m.totalMineral; tengo.push(k); }
+      else faltan.push(k);
+    });
+    return {total: total, meses: orden, conPlanilla: tengo, faltan: faltan,
+            completo: orden.length > 0 && faltan.length === 0};
+  }
+
   var api = {normalizar: normalizar, distancia: distancia, emparejar: emparejar,
              emparejarPlan: emparejarPlan,
              actualizarNor: actualizarNor, aCampo: aCampo,
              conciliar: conciliar, netoLiquidado: netoLiquidado,
              datosDeContrato: datosDeContrato,
-             tonelajeEmbarcado: tonelajeEmbarcado};
+             tonelajeEmbarcado: tonelajeEmbarcado,
+             claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 

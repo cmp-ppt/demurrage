@@ -5,7 +5,7 @@
 (function(){
   "use strict";
 
-  var L = window.Laytime, BIT = window.Bitacora, IMP = window.ImportarRTE, G = window.Graficos, FL = window.Flota, NOR = window.LeerNOR, LEC = window.Lectura, PRES = window.Presentacion, NUBE = window.Nube, CLIMA = window.Clima, REP = window.Reporteria, TRI = window.Trimestres, CONC = window.Conciliar, SESION = window.Sesion;
+  var L = window.Laytime, BIT = window.Bitacora, TUR = window.Turno, IMP = window.ImportarRTE, G = window.Graficos, FL = window.Flota, NOR = window.LeerNOR, LEC = window.Lectura, PRES = window.Presentacion, NUBE = window.Nube, CLIMA = window.Clima, REP = window.Reporteria, TRI = window.Trimestres, CONC = window.Conciliar, SESION = window.Sesion;
   var CLAVE = "demurrage-ppt.v2";
   var $ = function(id){ return document.getElementById(id); };
 
@@ -240,6 +240,25 @@
     autoguardar();
   }
 
+  /**
+   * Tres libros distintos entran por la misma puerta y se distinguen por sus
+   * hojas, no por el nombre del archivo ni por qué botón se apretó: la
+   * planilla de turno arrastrada al botón del CNN-EMB se leía como un
+   * registro de tiempos y fallaba con un error que no decía nada, y soltada
+   * en la zona de la reportería se leía como libro de temporada —sin la hoja
+   * PUNTA TOTORALILLO— y dejaba la temporada cargada en cero.
+   *
+   * Devuelve true si reconoció el libro y ya lo aplicó.
+   */
+  function enrutar(libro, nombre){
+    var hojas = ((libro && libro.SheetNames) || []).map(function(n){
+      return String(n).toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    });
+    if(hojas.indexOf("ACUMULADO EMBARQUE") >= 0){ aplicarTurno(libro, nombre); return true; }
+    if(hojas.indexOf("PUNTA TOTORALILLO") >= 0){ aplicarReporteria(REP.desdeLibro(libro), nombre); return true; }
+    return false;
+  }
+
   function leerArchivo(archivo){
     if(!archivo) return;
     if(typeof XLSX === "undefined"){
@@ -251,6 +270,7 @@
     lector.onload = function(ev){
       try{
         var libro = XLSX.read(new Uint8Array(ev.target.result), {type:"array", cellDates:true});
+        if(enrutar(libro, archivo.name)) return;
         aplicarImportado(IMP.desdeLibro(libro));
       }catch(err){
         avisoImport("No se pudo leer el archivo: " + esc(err.message), "error");
@@ -1192,6 +1212,69 @@
     });
   }
 
+  /* ═════════════ PLANILLAS DE TURNO: EL CALADO DEFINITIVO ═════════════
+     La tercera fuente de la app, y la única que trae el draft survey final.
+     El CNN-EMB da el pesómetro, el libro da el Bill of Lading, y el calado
+     llega acá, en la planilla que el turno llena día a día. Se guarda un
+     mes por entrada, con la clave «YYYY-MM». */
+
+  var CLAVE_TURNOS = "demurrage-ppt.turnos.v1";
+  var turnos = {};                 // "2026-09" -> {totalMineral, porNave, …}
+
+  function turnosCargar(){
+    try{
+      var crudo = localStorage.getItem(CLAVE_TURNOS);
+      var m = crudo ? JSON.parse(crudo) : {};
+      return (m && typeof m === "object" && !Array.isArray(m)) ? m : {};
+    }catch(e){ return {}; }
+  }
+  function turnosGuardar(){
+    try{ localStorage.setItem(CLAVE_TURNOS, JSON.stringify(turnos)); }catch(e){}
+  }
+
+  function avisoTurno(html, clase){ avisoRep(html, clase); }
+
+  /**
+   * Guarda el mes que trae una planilla de turno. Reemplaza el mes entero:
+   * la planilla del último día ya trae el acumulado, así que fusionar por
+   * nave sumaría dos veces lo mismo.
+   */
+  function aplicarTurno(libro, nombreArchivo){
+    var r = TUR.desdeLibro(libro, nombreArchivo);
+    if(!r.periodo){
+      avisoTurno("No se pudo leer el mes desde «" + esc(nombreArchivo) + "». " +
+        "El nombre tiene que traer la fecha, como DATOS_TURNO_PPT_30-09-2026.xlsx.", "error");
+      return;
+    }
+    if(!r.totalMineral){
+      avisoTurno("«" + esc(nombreArchivo) + "» no trae tonelaje de pellet feed ni de sinter feed." +
+        (r.avisos.length ? "<ul><li>" + r.avisos.map(esc).join("</li><li>") + "</li></ul>" : ""), "warn");
+      return;
+    }
+
+    var clave = r.periodo.anio + "-" + String(r.periodo.mes + 1).padStart(2, "0");
+    turnos[clave] = {
+      totalMineral: r.totalMineral,
+      totalOtros: r.totalOtros,
+      porNave: r.porNave,
+      archivo: nombreArchivo,
+      actualizadoEn: new Date().toISOString()
+    };
+    turnosGuardar();
+    if(temporada) renderTemporada();
+
+    var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
+    var html = "<strong>" + MES[r.periodo.mes] + " " + r.periodo.anio + "</strong>: " +
+      mil(r.totalMineral) + " t embarcadas en " + r.porNave.length +
+      (r.porNave.length === 1 ? " nave" : " naves") + "." +
+      (r.totalOtros ? " (" + mil(r.totalOtros) + " t de concentrado y MLC quedan fuera: " +
+        "no están en el libro de demurrage.)" : "");
+    if(r.avisos.length){
+      html += "<ul><li>" + r.avisos.map(esc).join("</li><li>") + "</li></ul>";
+    }
+    avisoTurno(html, r.avisos.length ? "warn" : "ok");
+  }
+
   /* ══════════════════ BITÁCORA DEL PUERTO ══════════════════
      Lo que pasó, no lo que el modelo dice que va a pasar. Se escribe el
      mismo día y se cita meses después al liquidar una recalada, así que el
@@ -1837,7 +1920,13 @@
     lector.onload = function(ev){
       try{
         var libro = XLSX.read(new Uint8Array(ev.target.result), {type:"array", cellDates:true});
-        aplicarReporteria(REP.desdeLibro(libro), archivo.name);
+        if(enrutar(libro, archivo.name)) return;
+        /* Un libro que no es ninguno de los dos no se aplica a medias: sin la
+           hoja de recaladas la temporada quedaría en cero y se perdería el
+           libro que ya estaba cargado, por haber soltado el archivo
+           equivocado en la zona. */
+        avisoRep("«" + esc(archivo.name) + "» no trae la hoja PUNTA TOTORALILLO ni " +
+          "ACUMULADO EMBARQUE: no se cargó nada.", "error");
       }catch(err){
         avisoRep("No se pudo leer el libro: " + esc(err.message), "error");
       }
@@ -2085,34 +2174,67 @@
        El filtro de arriba recorta el libro; el calado está en los CNN-EMB
        guardados, que es otro archivo. Se cruzan por nombre y fecha con el
        mismo emparejador de la conciliación. */
-    var emb = CONC.tonelajeEmbarcado((v.datos && v.datos.recaladas) || [], flota);
+    var recaladasPeriodo = (v.datos && v.datos.recaladas) || [];
     var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
-    $("t-embarcado").textContent = emb.total > 0 ? mil(emb.total) : "—";
+
+    /* Dos caminos para la misma cifra, y el bueno manda. La planilla de
+       turno trae el calado del mes y es exacta; sumar nave por nave desde
+       los CNN-EMB da 0,06 % de diferencia en la temporada, que es la que hay
+       entre el draft survey y el Bill of Lading. Se usa la planilla solo si
+       están TODAS las del periodo: con una faltando el total daría de menos
+       sin decirlo. */
+    var deTurno = CONC.embarcadoDeTurno(recaladasPeriodo, turnos);
+    var emb = CONC.tonelajeEmbarcado(recaladasPeriodo, flota);
+    var usaTurno = deTurno.completo && deTurno.total > 0;
+    $("t-embarcado").textContent = usaTurno ? mil(deTurno.total)
+                                            : (emb.total > 0 ? mil(emb.total) : "—");
     ajustarCifra($("t-embarcado"));
     /* El denominador va siempre: un total que cubre 8 de 14 naves se lee
        como el total del mes si no dice sobre cuántas está hecho, y con eso
        se presenta a gerencia una cifra que no es la que se embarcó. */
-    if(!emb.naves){
+    if(usaTurno){
+      /* De dónde sale la cifra, siempre: es la diferencia entre un número
+         que se puede defender en una liquidación y uno que no. */
+      $("t-embarcado-sub").textContent = deTurno.meses.length === 1
+        ? "planilla de turno · calado del mes"
+        : "planillas de turno · " + deTurno.meses.length + " meses";
+    }else if(!emb.naves){
       $("t-embarcado-sub").textContent = "carga el libro de reportería";
     }else if(!emb.conDato){
-      $("t-embarcado-sub").textContent = "ninguna de las " + emb.naves + " naves tiene CNN-EMB cargado";
+      /* No hay cifra por ningún camino. El denominador va igual: «sin
+         calado» a secas no dice de cuántas naves se está hablando, y es lo
+         primero que se va a preguntar. */
+      $("t-embarcado-sub").textContent = "sin calado de las " + emb.naves +
+        (emb.naves === 1 ? " nave" : " naves") +
+        (deTurno.faltan.length
+          ? " · falta la planilla de " + (deTurno.faltan.length <= 3
+              ? deTurno.faltan.join(", ")
+              : deTurno.faltan.length + " meses")
+          : "");
     }else{
       var partes = [emb.conDato + " de " + emb.naves + " naves"];
       partes.push(emb.conCalado === emb.conDato
         ? "todas por draft survey"
         : emb.conCalado + " por draft survey");
+      if(deTurno.faltan.length) partes.push("sin planilla de " + deTurno.faltan.length +
+        (deTurno.faltan.length === 1 ? " mes" : " meses"));
       $("t-embarcado-sub").textContent = partes.join(" · ");
     }
     /* Incompleto se ve, no se deduce: mismo tono de aviso que usa la ficha
        de liquidado cuando hay proyecciones. */
-    $("kpi-t-embarcado").querySelector(".ico-marca").style.color =
-      (emb.conDato && emb.conDato < emb.naves) ? AVISO : "var(--cmp-blue-400)";
+    /* Verde cuando la cifra sale de la planilla —es la exacta—, ámbar
+       cuando está armada a pedazos desde los CNN-EMB. */
+    $("kpi-t-embarcado").querySelector(".ico-marca").style.color = usaTurno ? OK
+      : ((emb.conDato && emb.conDato < emb.naves) || deTurno.faltan.length) ? AVISO
+      : "var(--cmp-blue-400)";
     /* Contra el libro, que es la otra cifra que alguien va a citar. */
-    $("kpi-t-embarcado").title = emb.conDato
-      ? "Calado: " + mil(emb.total) + " t sobre " + emb.conDato + " naves.\n" +
-        "Libro (BL): " + mil(emb.cargoLibro) + " t sobre " + emb.naves + " naves." +
-        (emb.pesometro > 0 ? "\n" + mil(emb.pesometro) + " t vienen del pesómetro, no del calado." : "")
-      : "Sin CNN-EMB cargados para este periodo.";
+    var detalle = [];
+    if(usaTurno) detalle.push("Planilla de turno: " + mil(deTurno.total) + " t  (" + deTurno.meses.join(", ") + ")");
+    if(emb.conDato) detalle.push("Calado de los CNN-EMB: " + mil(emb.total) + " t sobre " + emb.conDato + " naves");
+    if(emb.naves) detalle.push("Libro (BL): " + mil(emb.cargoLibro) + " t sobre " + emb.naves + " naves");
+    if(emb.pesometro > 0) detalle.push(mil(emb.pesometro) + " t vienen del pesómetro, no del calado");
+    if(deTurno.faltan.length) detalle.push("Sin planilla de turno: " + deTurno.faltan.join(", "));
+    $("kpi-t-embarcado").title = detalle.length ? detalle.join("\n") : "Sin datos para este periodo.";
     $("t-espera").textContent = Math.round(t.espera).toLocaleString("es-CL");
     /* La cifra es la suma de la espera de todas las naves, no un promedio,
        y sin decir sobre cuántas se lee como si fuera una sola espera. El
@@ -3086,6 +3208,7 @@
   PRES.iniciar();
   pintarUmbrales();
   bitacora = bitCargar();
+  turnos = turnosCargar();
   $("bit-causas").innerHTML = BIT.CAUSAS.map(function(c){
     return '<option value="' + esc(c) + '"></option>';
   }).join("");
