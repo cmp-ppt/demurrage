@@ -11,7 +11,8 @@
  *
  * Necesita Playwright. Sin él se omite, como el resto de las de navegador.
  */
-var fs = require("fs"), path = require("path"), http = require("http");
+var fs = require("fs"), path = require("path"), http = require("http"), os = require("os");
+var XLSX = require("../js/vendor/xlsx.full.min.js");
 var raiz = path.join(__dirname, "..");
 
 var chromium;
@@ -31,6 +32,7 @@ var USUARIOS = {"hector@cmp.cl": "clave-buena"};
 function supabaseFalso(vidaSegundos){
   var tokens = {}, refrescos = {}, filas = {}, n = 0, refrescosPedidos = 0;
   var temporada = null;   // el libro compartido: una sola fila
+  var turnos = {};        // las planillas de turno: una fila por mes
   function emitir(email){
     var a = "acc" + (++n), r = "ref" + n;
     tokens[a] = email; refrescos[r] = email;
@@ -93,6 +95,26 @@ function supabaseFalso(vidaSegundos){
         return res.end(JSON.stringify({code:"42P01",
           message:'relation "public.demurrage_bitacora" does not exist'}));
       }
+      /* Las planillas de turno sí existen en este proyecto falso —al
+         contrario de la bitácora— para recorrer el camino bueno: una fila
+         por mes, y cargar un mes no toca los otros. */
+      if(u.pathname.indexOf("/rest/v1/demurrage_turnos") === 0){
+        if(req.method === "GET"){
+          res.writeHead(200, {"Content-Type":"application/json"});
+          return res.end(JSON.stringify(Object.keys(turnos).map(function(k){ return turnos[k]; })));
+        }
+        if(req.method === "POST"){
+          return cuerpo(req).then(function(txt){
+            try{
+              var b = JSON.parse(txt || "[]");
+              (Array.isArray(b) ? b : [b]).forEach(function(f){
+                if(f && f.mes) turnos[f.mes] = f;
+              });
+            }catch(e){}
+            res.writeHead(201); res.end();
+          });
+        }
+      }
       /* El libro de reportería: una fila, se reemplaza entera. */
       if(u.pathname.indexOf("/rest/v1/demurrage_temporada") === 0){
         if(req.method === "GET"){
@@ -124,7 +146,8 @@ function supabaseFalso(vidaSegundos){
     srv.listen(0, "127.0.0.1", function(){
       listo({srv: srv, puerto: srv.address().port,
              filas: filas, refrescos: function(){ return refrescosPedidos; },
-             temporada: function(){ return temporada; }});
+             temporada: function(){ return temporada; },
+             turnos: function(){ return turnos; }});
     });
   });
 }
@@ -253,6 +276,56 @@ function chequear(nombre, ok, detalle){
       await pg.evaluate(function(){
         return JSON.parse(localStorage.getItem("demurrage-ppt.bitacora.v1") || "[]").length;
       }), 1);
+
+    /* ── Las planillas de turno van y vuelven ──
+       Antes vivían solo en el localStorage del navegador que las cargó, y
+       las otras dos personas tenían que arrastrar las mismas nueve
+       planillas para ver el tonelaje del mes. Lo que se comprueba acá es el
+       viaje completo: se carga una, llega al servidor, se borra lo local y
+       vuelve a bajar. Sin la segunda mitad la prueba pasaría con una app
+       que sube y nunca lee. */
+    var tmpT = fs.mkdtempSync(path.join(os.tmpdir(), "puerta-turno-"));
+    var planillaT = path.join(tmpT, "DATOS_TURNO_PPT_30-09-2026.xlsx");
+    (function(){
+      var wb = XLSX.utils.book_new();
+      /* La hoja real deja la columna A vacía. Las cifras son las de
+         septiembre: 706.510 de pellet feed más 107.074 de sinter. */
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ["Tonelaje acumulado Mes"],
+        ["Pellet Feed", "PM", "CNN", "TOTAL"],
+        ["CHINA TRIUMPH", null, null, 135872],
+        ["PIGI", null, null, 198027],
+        ["NISEKO QUEEN", null, null, 165200],
+        ["MINERAL COMOROS", null, null, 207411],
+        ["TOTAL", null, null, 706510],
+        [],
+        ["Sinter Feed", "Cancha 1", "Cancha 3", "HSF"],
+        ["CHINA TRIUMPH", null, null, 65022],
+        ["NISEKO QUEEN", null, null, 42052],
+        ["TOTAL", null, null, 107074]
+      ].map(function(f){ return [null].concat(f); })), "ACUMULADO EMBARQUE");
+      fs.writeFileSync(planillaT, Buffer.from(XLSX.write(wb, {type:"array", bookType:"xlsx"})));
+    })();
+    await pg.setInputFiles("#archivo", planillaT);
+    await pg.waitForTimeout(2000);
+    var subido = api.turnos()["2026-09"];
+    chequear("la planilla cargada llega al servidor", !!subido,
+      JSON.stringify(Object.keys(api.turnos())));
+    chequear("con el tonelaje del mes", subido ? Number(subido.total_mineral) : 0, 813584);
+    chequear("y con quién la cargó", subido ? subido.cargado_por : "", "hector@cmp.cl");
+    chequear("no viajó la anon key al subirla",
+      autorizaciones.every(function(a){ return a.indexOf(ANON) === -1; }),
+      autorizaciones.join(" , "));
+
+    /* Y la vuelta: otro navegador, sin nada guardado, tiene que verla. */
+    await pg.evaluate(function(){ localStorage.removeItem("demurrage-ppt.turnos.v1"); });
+    await pg.reload({waitUntil:"networkidle"});
+    await pg.waitForTimeout(2500);
+    var bajado = await pg.evaluate(function(){
+      var m = JSON.parse(localStorage.getItem("demurrage-ppt.turnos.v1") || "{}");
+      return m["2026-09"] ? m["2026-09"].totalMineral : null;
+    });
+    chequear("y un navegador sin nada guardado la recibe", bajado, 813584);
 
     /* La comprobación que importa: lo que viaja es el token del usuario. */
     chequear("ya hubo peticiones de datos", autorizaciones.length > 0, autorizaciones.length + "");

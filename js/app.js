@@ -1313,6 +1313,38 @@
 
   function avisoTurno(html, clase){ avisoRep(html, clase); }
 
+  var turnosCompartidos = true;            // ¿la tabla de la nube existe?
+
+  /**
+   * Trae los meses compartidos y sube los propios.
+   *
+   * Se une por mes, no reemplazando el almacén: tres personas cargan
+   * planillas de meses distintos y quien guardara último borraría el mes
+   * que otro acabó de cargar. Eso se notaría tarde y mal —la ficha de un
+   * mes apareciendo vacía— así que la fusión es por mes y por marca.
+   */
+  function turnosSincronizar(){
+    if(!NUBE.lista()) return Promise.resolve(false);
+    return NUBE.listarTurnos().then(function(remotos){
+      var pendientes = TUR.mesesPendientes(turnos, remotos);
+      var antes = Object.keys(turnos).length;
+      turnos = TUR.fusionarMeses(turnos, remotos);
+      turnosGuardar();
+      /* Si llegó un mes nuevo, la ficha de TM embarcadas tiene que
+         enterarse sin que nadie recargue la página. */
+      if(temporada && Object.keys(turnos).length !== antes) renderTemporada();
+      if(!pendientes.length) return true;
+      return NUBE.subirTurnos(turnos, pendientes).then(function(ok){
+        /* Que la tabla no exista todavía es lo normal hasta que alguien
+           corra el SQL, y no es una caída de la red: los embarques y la
+           temporada viajan igual. Se dice donde está el dato que no se
+           comparte, no en el chip de la cabecera. */
+        turnosCompartidos = ok;
+        return ok;
+      });
+    }).catch(function(){ return false; });
+  }
+
   /**
    * Guarda el mes que trae una planilla de turno. Reemplaza el mes entero:
    * la planilla del último día ya trae el acumulado, así que fusionar por
@@ -1353,7 +1385,25 @@
     if(r.avisos.length){
       html += "<ul><li>" + r.avisos.map(esc).join("</li><li>") + "</li></ul>";
     }
-    avisoTurno(html, r.avisos.length ? "warn" : "ok");
+    var clase = r.avisos.length ? "warn" : "ok";
+
+    /* Y se comparte, que es lo que evita que las otras dos personas tengan
+       que arrastrar las mismas nueve planillas en su navegador. El mensaje
+       sale ya, sin esperar a la red: la planilla está leída y guardada
+       pase lo que pase con Supabase. */
+    if(!NUBE.lista()){
+      avisoTurno(html + " Queda en este equipo: la app no está conectada a Supabase.", clase);
+      return;
+    }
+    avisoTurno(html + " Compartiendo…", clase);
+    turnos[clave].cargadoPor = SESION.usuario();
+    NUBE.subirTurnos(turnos, [clave]).then(function(ok){
+      turnosCompartidos = ok;
+      avisoTurno(html + (ok
+        ? " Compartida con el equipo."
+        : " Queda en este equipo: falta crear la tabla <code>demurrage_turnos</code> " +
+          "en Supabase (está en supabase/esquema.sql)."), ok ? clase : "warn");
+    });
   }
 
   /* ══════════════════ BITÁCORA DEL PUERTO ══════════════════
@@ -3321,6 +3371,9 @@
     /* La bitácora entra al mismo relevo: el cierre por paro lo anota quien
        esté en el terminal y los otros dos tienen que verlo sin recargar. */
     bitSincronizar();
+    /* Y las planillas de turno: quien recibe la del fin de mes la carga una
+       vez y el resto ve el tonelaje sin repetir el Excel. */
+    turnosSincronizar();
   }
   if(NUBE.lista()) relevo();
   // Relevo periódico: otra persona puede estar cargando embarques ahora.

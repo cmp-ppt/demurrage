@@ -459,6 +459,78 @@
     }).catch(function(){ return []; });
   }
 
+  /* ─────────── planillas de turno (ACUMULADO EMBARQUE) ─────────── */
+
+  var TABLA_TURNOS = "demurrage_turnos";
+
+  /**
+   * Una fila por mes. El mes es la unidad porque es lo que trae cada
+   * planilla: tres personas cargan meses distintos y con el almacén entero
+   * en una sola fila, quien guarde último borra el mes que otro acabó de
+   * cargar. Dentro de un mes se reemplaza completo —la planilla del último
+   * día ya trae el acumulado— y de eso se encarga `merge-duplicates`.
+   *
+   * Como la bitácora, no toca el estado global de conexión: la tabla puede
+   * no existir todavía —el SQL se corre aparte— y poner la app en «Sin
+   * conexión» por eso mandaría a buscar un problema de red que no existe.
+   */
+  function subirTurnos(mapa, claves){
+    var lista2 = claves && claves.length ? claves : Object.keys(mapa || {});
+    if(!lista() || !lista2.length) return Promise.resolve(false);
+    var c = config();
+    var filas = lista2.map(function(k){
+      var m = (mapa || {})[k] || {};
+      return {
+        mes: k,
+        total_mineral: Number(m.totalMineral) || 0,
+        total_otros: Number(m.totalOtros) || 0,
+        por_nave: m.porNave || [],
+        archivo: m.archivo || "",
+        cargado_por: m.cargadoPor || "",
+        actualizado_en: m.actualizadoEn || new Date().toISOString()
+      };
+    });
+    return conToken().then(function(tk){
+      return fetch(c.url + "/rest/v1/" + TABLA_TURNOS, {
+        method: "POST",
+        headers: cabeceras(tk, {"Content-Type":"application/json",
+                            Prefer:"resolution=merge-duplicates,return=minimal"}),
+        body: JSON.stringify(filas)
+      });
+    }).then(function(res){
+      if(!res.ok) throw new Error("HTTP " + res.status + " al subir las planillas de turno");
+      return true;
+    }).catch(function(){ return false; });
+  }
+
+  /** Los meses compartidos, como mapa. Vacío si la tabla no existe todavía. */
+  function listarTurnos(){
+    if(!lista()) return Promise.resolve({});
+    var c = config();
+    return conToken().then(function(tk){
+      return fetch(c.url + "/rest/v1/" + TABLA_TURNOS + "?select=*&order=mes.desc",
+                   {headers: cabeceras(tk)});
+    }).then(function(res){
+      if(res.status === 404) return [];
+      if(!res.ok) throw new Error("HTTP " + res.status + " al leer las planillas de turno");
+      return res.json();
+    }).then(function(filas){
+      var out = {};
+      (Array.isArray(filas) ? filas : []).forEach(function(f){
+        if(!f || !f.mes) return;
+        out[f.mes] = {
+          totalMineral: Number(f.total_mineral) || 0,
+          totalOtros: Number(f.total_otros) || 0,
+          porNave: Array.isArray(f.por_nave) ? f.por_nave : [],
+          archivo: f.archivo || "",
+          cargadoPor: f.cargado_por || "",
+          actualizadoEn: f.actualizado_en || ""
+        };
+      });
+      return out;
+    }).catch(function(){ return {}; });
+  }
+
   /** Comprueba credenciales contra la tabla, sin traer datos. */
   function probar(){
     var c = config();
@@ -484,7 +556,8 @@
     listar: listar, guardar: guardar, eliminar: eliminar, probar: probar,
     subirTemporada: subirTemporada, bajarTemporada: bajarTemporada, TABLA_TEMP: TABLA_TEMP,
     subirEventos: subirEventos, borrarEvento: borrarEvento, listarEventos: listarEventos,
-    TABLA_BITACORA: TABLA_BITACORA
+    TABLA_BITACORA: TABLA_BITACORA,
+    subirTurnos: subirTurnos, listarTurnos: listarTurnos, TABLA_TURNOS: TABLA_TURNOS
   };
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Nube = api;

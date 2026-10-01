@@ -183,8 +183,47 @@
     };
   }
 
+  /* ───────────────── el almacén de meses ───────────────── */
+
+  /**
+   * Une lo local con lo que hay en la nube, mes por mes.
+   *
+   * La unidad es el mes y no la lista entera, que es la diferencia que
+   * importa: tres personas cargan planillas de meses distintos, y
+   * reemplazar el almacén completo por el de la nube haría desaparecer el
+   * mes que otro acabó de cargar sin que nadie se entere. Dentro de un mes
+   * sí gana el más reciente, porque la planilla del último día ya trae el
+   * acumulado: fusionar nave por nave sumaría dos veces lo mismo.
+   */
+  function fusionarMeses(locales, remotos){
+    var out = {};
+    function marca(m){ return m && m.actualizadoEn ? Date.parse(m.actualizadoEn) || 0 : 0; }
+    function valido(m){ return m && typeof m.totalMineral === "number"; }
+    Object.keys(locales || {}).forEach(function(k){
+      if(valido(locales[k])) out[k] = locales[k];
+    });
+    Object.keys(remotos || {}).forEach(function(k){
+      if(!valido(remotos[k])) return;
+      if(!out[k] || marca(remotos[k]) > marca(out[k])) out[k] = remotos[k];
+    });
+    return out;
+  }
+
+  /** Los meses que hay que subir: los que la nube no tiene o tiene más viejos. */
+  function mesesPendientes(locales, remotos){
+    function marca(m){ return m && m.actualizadoEn ? Date.parse(m.actualizadoEn) || 0 : 0; }
+    return Object.keys(locales || {}).filter(function(k){
+      var mio = locales[k];
+      if(!mio || typeof mio.totalMineral !== "number") return false;
+      var alla = (remotos || {})[k];
+      if(!alla) return true;
+      return marca(mio) > marca(alla);
+    }).sort();
+  }
+
   var api = {BLOQUES: BLOQUES, normalizarNave: normalizarNave,
-             mesDeNombre: mesDeNombre, desdeLibro: desdeLibro};
+             mesDeNombre: mesDeNombre, desdeLibro: desdeLibro,
+             fusionarMeses: fusionarMeses, mesesPendientes: mesesPendientes};
 
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Turno = api;

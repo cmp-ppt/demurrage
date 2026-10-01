@@ -147,5 +147,51 @@ var mixto = T.desdeLibro(libro([
 chequear("la misma nave escrita de dos formas se junta", mixto.porNave.length, 1);
 chequear("y suma las dos filas", mixto.porNave[0].tm, 207301);
 
+/* ---------------------------------------------------------------- */
+bloque("Tres personas cargando planillas de meses distintos");
+/* La unidad compartida es el mes. Reemplazar el almacén completo por el de
+   la nube —«gana el último que guardó»— haría desaparecer el mes que otro
+   acabó de cargar, y nadie lo notaría hasta que la ficha de un mes
+   apareciera vacía. */
+function mes(tm, cuando){
+  return {totalMineral: tm, totalOtros: 0, porNave: [],
+          archivo: "DATOS_TURNO_PPT.xlsx", actualizadoEn: cuando};
+}
+var mio   = {"2026-09": mes(813584, "2026-10-01T10:00:00.000Z")};
+var suyo  = {"2026-08": mes(837421, "2026-09-01T10:00:00.000Z")};
+var unido = T.fusionarMeses(mio, suyo);
+chequear("no se pierde el mes del otro", Object.keys(unido).sort().join(","), "2026-08,2026-09");
+chequear("y cada uno conserva su cifra", unido["2026-08"].totalMineral, 837421);
+
+/* Dentro de un mes sí manda el más reciente: la planilla del último día ya
+   trae el acumulado, así que la versión nueva reemplaza, no suma. */
+var mismoMesViejo = {"2026-09": mes(700000, "2026-09-20T10:00:00.000Z")};
+chequear("la versión más nueva del mismo mes gana",
+  T.fusionarMeses(mio, mismoMesViejo)["2026-09"].totalMineral, 813584);
+var mismoMesNuevo = {"2026-09": mes(820000, "2026-10-02T10:00:00.000Z")};
+chequear("y si la de la nube es más nueva, gana esa",
+  T.fusionarMeses(mio, mismoMesNuevo)["2026-09"].totalMineral, 820000);
+/* Un mes sin tonelaje no es un mes: dejarlo entrar pisaría una planilla
+   buena con una fila vacía. */
+chequear("una entrada sin tonelaje no entra",
+  Object.keys(T.fusionarMeses({}, {"2026-07": {archivo:"x.xlsx"}})).length, 0);
+chequear("ni desde lo local", Object.keys(T.fusionarMeses({"2026-07": {}}, {})).length, 0);
+chequear("sin argumentos no revienta", Object.keys(T.fusionarMeses()).length, 0);
+
+bloque("Qué meses hay que subir");
+chequear("el que la nube no tiene", T.mesesPendientes(mio, suyo).join(","), "2026-09");
+chequear("y el que allá está más viejo",
+  T.mesesPendientes(mio, mismoMesViejo).join(","), "2026-09");
+chequear("el que ya está igual no se sube",
+  T.mesesPendientes(mio, mio).length, 0);
+chequear("ni el que allá está más nuevo",
+  T.mesesPendientes(mio, mismoMesNuevo).length, 0);
+chequear("sin nada local, nada que subir", T.mesesPendientes({}, suyo).length, 0);
+chequear("en orden de mes",
+  T.mesesPendientes({"2026-09": mes(1,"2026-10-01T10:00:00.000Z"),
+                     "2026-07": mes(1,"2026-10-01T10:00:00.000Z")}, {}).join(","),
+  "2026-07,2026-09");
+chequear("sin argumentos no revienta", T.mesesPendientes().length, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

@@ -159,6 +159,66 @@ create policy demurrage_bitacora_auth
   using (true)
   with check (true);
 
+-- ============================================================
+-- PLANILLAS DE TURNO · ACUMULADO EMBARQUE
+--
+-- El tonelaje embarcado dentro de cada mes, que es la fuente del draft
+-- survey definitivo: ni el CNN-EMB ni el libro de reportería lo traen. El
+-- CNN-EMB trae el pesómetro y un calado provisorio; el libro trae el Bill
+-- of Lading; el draft survey final queda en la planilla que el turno llena
+-- día a día, y es el que se liquida.
+--
+-- Una fila por MES, no un blob con el almacén entero. Son tres personas
+-- cargando planillas de meses distintos, y con todo en una fila quien
+-- guardara último borraría el mes que otro acabó de cargar; nadie lo
+-- notaría hasta que la ficha de ese mes apareciera vacía.
+--
+-- Dentro de un mes sí se reemplaza entero. La planilla del último día ya
+-- trae el acumulado del mes, así que fusionar nave por nave sumaría dos
+-- veces lo mismo.
+-- ============================================================
+
+create table if not exists public.demurrage_turnos (
+  mes             text primary key,          -- "2026-09"
+  total_mineral   numeric not null,          -- pellet feed + sinter feed
+  total_otros     numeric not null default 0,-- concentrado de cobre y MLC, que van aparte
+  por_nave        jsonb   not null default '[]'::jsonb,
+  archivo         text    not null default '',
+  cargado_por     text    not null default '',
+  actualizado_en  timestamptz not null default now(),
+  constraint demurrage_turnos_mes check (mes ~ '^\d{4}-(0[1-9]|1[0-2])$')
+);
+
+-- Misma guarda que las otras tablas: la marca la escribe el cliente —es el
+-- único que sabe cuándo se cargó esa planilla— y no retrocede, para que una
+-- versión vieja que aterriza última no pise a la nueva.
+create or replace function public.demurrage_turnos_fecha()
+returns trigger language plpgsql as $$
+begin
+  if new.actualizado_en is null then
+    new.actualizado_en = now();
+  end if;
+  if TG_OP = 'UPDATE' and new.actualizado_en < old.actualizado_en then
+    return old;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists demurrage_turnos_tocar on public.demurrage_turnos;
+create trigger demurrage_turnos_tocar
+  before insert or update on public.demurrage_turnos
+  for each row execute function public.demurrage_turnos_fecha();
+
+alter table public.demurrage_turnos enable row level security;
+
+drop policy if exists demurrage_turnos_auth on public.demurrage_turnos;
+create policy demurrage_turnos_auth
+  on public.demurrage_turnos
+  for all
+  to authenticated
+  using (true)
+  with check (true);
+
 -- ─────────────────────────────────────────────────────────────
 -- SEGURIDAD
 --
@@ -203,6 +263,7 @@ create policy demurrage_auth_todo
 --   select count(*) from public.demurrage_embarques;   -- debe dar 0 filas
 --   select count(*) from public.demurrage_temporada;   -- debe dar 0 filas
 --   select count(*) from public.demurrage_bitacora;    -- debe dar 0 filas
+--   select count(*) from public.demurrage_turnos;      -- debe dar 0 filas
 --   reset role;
 -- Si devuelve filas, quedó una política `to anon` viva: búscala con
 --   select policyname, roles from pg_policies
