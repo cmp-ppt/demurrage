@@ -58,7 +58,10 @@
                    es provisorio: sirve para saber si lo que hay en el campo lo
                    puso una persona o lo puso la importación. */
                 "rteCalado","rteCaladoRte","rtePesometro08","rtePesometro09","rteTasaEfectiva","rteTasaHora",
-                "rteTasaDia","rteHorasReloj","rteOrigenTonelaje"];
+                "rteTasaDia","rteHorasReloj","rteOrigenTonelaje",
+                /* Las tres cifras del muellaje tal como las trae la hoja
+                   MUELLAJE del CNN-EMB: son las que se muestran. */
+                "rteHorasMuellaje","rteNwh","rteMuellajeUsd"];
 
   /* ─────────────────────────── formato ─────────────────────────── */
 
@@ -221,6 +224,8 @@
     if(d.horasTotales != null)    $("horasTotales").value = red2(d.horasTotales);
     if(d.horasOpEfectiva != null) $("horasOpEfectiva").value = red2(d.horasOpEfectiva);
     [["calado","rteCalado"], ["calado","rteCaladoRte"],
+     ["horasMuellajeLibro","rteHorasMuellaje"], ["nwhLibro","rteNwh"],
+     ["muellajeLibro","rteMuellajeUsd"],
      ["pesometro08","rtePesometro08"], ["pesometro09","rtePesometro09"],
      ["tasaEfectiva","rteTasaEfectiva"], ["tasaHora","rteTasaHora"], ["tasaDia","rteTasaDia"],
      ["horasReloj","rteHorasReloj"]
@@ -584,10 +589,11 @@
       $("p-calado-sub").style.color = "";
     }
 
-    $("p-tonelaje").textContent = ton ? mil(ton) : "—";
-    var origen = $("rteOrigenTonelaje").value;
-    $("p-tonelaje-sub").textContent = !ton ? "carga el registro de tiempos"
-      : (origen ? "según " + origen : "alimenta el laytime");
+    /* La ficha «Tonelaje del cálculo» se retiró: repetía la cifra del calado
+       —o la del pesómetro cuando no hay calado— y la ficha del laytime ya
+       escribe la división completa, «200.894 t ÷ 30.000 t/día». El campo
+       sigue existiendo y sigue alimentando el cálculo; lo que sobraba era
+       mostrarlo tres veces.  `ton` se usa más abajo para las tasas. */
 
     /* ── Tasas: del RTE si vienen; si no, calculadas y dicho en pantalla ──
        Antes quedaban en blanco sin explicación y parecía un defecto. */
@@ -1021,12 +1027,31 @@
     fichaResultado("despatch", "na", "—", "\u00a0");
   }
 
+  /**
+   * El muellaje, con las cifras de la hoja MUELLAJE del CNN-EMB.
+   *
+   * La hoja trae escritas las tres: «Tiempo Muellaje (horas decimales)»,
+   * el NWH y el monto. Son las que se muestran, porque son las del
+   * documento que se factura y las que le van a poner a uno delante.
+   *
+   * La app las recalcula igual desde las espías, pero para contrastar: en
+   * los seis CNN-EMB de la temporada coinciden al centavo, y el día que no
+   * coincidan es porque una fórmula de la hoja quedó corta —como la del
+   * total de sinter feed de la planilla de julio— y eso hay que verlo antes
+   * de facturar, no después. Sin hoja que leer, manda el cálculo propio.
+   */
   function renderMuellaje(){
-    var m = L.calcularMuellaje({
+    var propio = L.calcularMuellaje({
       primeraEspia: fh("primeraEspia"), ultimaEspia: fh("ultimaEspia"),
       horasMantenimiento: num("horasMantenimientoMuellaje"), horasGira: num("horasGira"),
       eslora: num("eslora"), tarifa: num("tarifaMuelle")
     });
+    var hHoja = num("rteHorasMuellaje"), nwhHoja = num("rteNwh"), usdHoja = num("rteMuellajeUsd");
+    var deHoja = hHoja > 0 && nwhHoja > 0;
+    var m = deHoja
+      ? {horasMuellaje: hHoja, nwh: nwhHoja, monto: usdHoja,
+         descuentos: Math.round((hHoja - nwhHoja) * 100) / 100}
+      : propio;
     var tiempo = m.horasMuellaje ? hDec(m.horasMuellaje) : "—";
     var monto  = m.horasMuellaje ? usdExacto(m.monto) : "—";
     // Las fichas y el desglose muestran lo mismo: unas resumen, el otro explica.
@@ -1038,13 +1063,33 @@
 
     /* Cada ficha dice de dónde sale su cifra: si no, "NWH 129,80 h" obliga a
        abrir el desglose para saber qué se descontó. */
-    $("m-tiempo-sub").textContent = m.horasMuellaje ? L.horasADias(m.horasMuellaje) : "faltan las espías";
+    $("m-tiempo-sub").textContent = m.horasMuellaje
+      ? L.horasADias(m.horasMuellaje) + (deHoja ? " · hoja MUELLAJE" : "")
+      : "faltan las espías";
     $("m-nwh-sub").textContent = m.horasMuellaje
       ? "(−) " + hDec(m.descuentos) + " de mtto. y gira" : "\u00a0";
     $("m-monto-sub").textContent = m.horasMuellaje
       ? num("eslora").toLocaleString("es-CL") + " m × " + num("tarifaMuelle") + " US$/m/h"
       : "\u00a0";
     ajustarCifra($("m-monto"));
+
+    /* Las dos cifras, cuando hay con qué contrastar. Media hora de
+       diferencia entre lo que dice la hoja y lo que sale de las espías son
+       cientos de dólares de muellaje, y en silencio se facturan igual. */
+    var descuadre = deHoja && propio.horasMuellaje &&
+      (Math.abs(propio.horasMuellaje - hHoja) > 0.02 || Math.abs(propio.monto - usdHoja) > 1);
+    $("kpi-m-tiempo").querySelector(".ico-marca").style.color = descuadre ? AVISO : "";
+    $("m-tiempo-sub").style.color = descuadre ? AVISO : "";
+    if(descuadre){
+      $("m-tiempo-sub").textContent = "hoja " + hDec(hHoja) + " · espías " +
+        hDec(propio.horasMuellaje);
+    }
+    $("kpi-m-tiempo").title = deHoja
+      ? "Hoja MUELLAJE del CNN-EMB: " + hDec(hHoja) + " · NWH " + hDec(nwhHoja) +
+        " · " + usdExacto(usdHoja) +
+        (propio.horasMuellaje ? "\nDesde las espías: " + hDec(propio.horasMuellaje) +
+          " · NWH " + hDec(propio.nwh) + " · " + usdExacto(propio.monto) : "")
+      : "Calculado desde las espías: la hoja MUELLAJE no trae sus cifras.";
   }
 
   function renderIndices(deduc){
@@ -1182,6 +1227,9 @@
        cargada en el formulario. */
     c.rteCalado       = d.calado == null ? "" : String(d.calado);
     c.rteCaladoRte    = d.calado == null ? "" : String(d.calado);
+    c.rteHorasMuellaje = d.horasMuellajeLibro == null ? "" : String(d.horasMuellajeLibro);
+    c.rteNwh          = d.nwhLibro == null ? "" : String(d.nwhLibro);
+    c.rteMuellajeUsd  = d.muellajeLibro == null ? "" : String(d.muellajeLibro);
     c.rtePesometro08  = d.pesometro08 == null ? "" : String(d.pesometro08);
     c.rtePesometro09  = d.pesometro09 == null ? "" : String(d.pesometro09);
     c.rteTasaEfectiva = d.tasaEfectiva == null ? "" : String(d.tasaEfectiva);
@@ -2300,6 +2348,24 @@
     });
   }
 
+  /* Los meses del periodo que tienen planilla, en orden, para la chispa de
+     TM embarcadas. Devuelve [] cuando hay menos de dos: una línea de un
+     punto es una mancha que finge ser información. */
+  function pintarChispaEmbarcado(deTurno){
+    var nodo = $("ch-embarcado");
+    if(!nodo) return;
+    var puntos = (deTurno && deTurno.conPlanilla ? deTurno.conPlanilla : [])
+      .map(function(k){
+        var m = turnos[k];
+        return {rotulo: MES[Number(k.slice(5)) - 1] + " " + k.slice(0, 4),
+                valor: m ? m.totalMineral : 0};
+      });
+    if(puntos.length < 2){ while(nodo.firstChild) nodo.removeChild(nodo.firstChild); return; }
+    G.chispa(nodo, puntos, {formato: function(v){
+      return Math.round(v).toLocaleString("es-CL") + " t";
+    }});
+  }
+
   function renderTemporada(){
     if(!temporada) return;
     var v = temporada.vista || temporada;
@@ -2312,6 +2378,9 @@
          en pie la haría pasar por la del filtro nuevo. */
       $("t-embarcado").textContent = "—";
       $("t-embarcado-sub").textContent = "sin recaladas en el filtro";
+      /* Y la tendencia también: dejarla pintada la haría pasar por la del
+         filtro nuevo, que no tiene ninguna recalada. */
+      pintarChispaEmbarcado(null);
       return;
     }
 
@@ -2349,19 +2418,33 @@
        sin decirlo. */
     var deTurno = CONC.embarcadoDeTurno(recaladasPeriodo, turnos);
     var emb = CONC.tonelajeEmbarcado(recaladasPeriodo, flota);
-    var usaTurno = deTurno.completo && deTurno.total > 0;
+    /* Manda la planilla aunque falte un mes, no solo cuando están todas.
+       La regla anterior —todas o ninguna— se caía al camino de los CNN-EMB,
+       y con nueve meses cargados y uno sin planilla eso ponía 200.894 t de
+       UNA nave donde había cinco millones y medio en nueve meses medidos.
+       El reparo no era sumar de menos, era sumar de menos EN SILENCIO: con
+       «9 de 10 meses · falta 2026-10» escrito debajo, la cifra parcial es
+       más honesta que una peor armada desde otra fuente. */
+    var usaTurno = deTurno.conPlanilla.length > 0 && deTurno.total > 0;
+    var completo = usaTurno && deTurno.completo;
     $("t-embarcado").textContent = usaTurno ? mil(deTurno.total)
                                             : (emb.total > 0 ? mil(emb.total) : "—");
     ajustarCifra($("t-embarcado"));
     /* El denominador va siempre: un total que cubre 8 de 14 naves se lee
        como el total del mes si no dice sobre cuántas está hecho, y con eso
        se presenta a gerencia una cifra que no es la que se embarcó. */
-    if(usaTurno){
+    if(usaTurno && completo){
       /* De dónde sale la cifra, siempre: es la diferencia entre un número
          que se puede defender en una liquidación y uno que no. */
       $("t-embarcado-sub").textContent = deTurno.meses.length === 1
         ? "planilla de turno · calado del mes"
         : "planillas de turno · " + deTurno.meses.length + " meses";
+    }else if(usaTurno){
+      /* Parcial, y dicho: cuántos meses cubre y cuál falta. */
+      $("t-embarcado-sub").textContent = deTurno.conPlanilla.length + " de " +
+        deTurno.meses.length + " meses · falta la planilla de " +
+        (deTurno.faltan.length <= 3 ? deTurno.faltan.join(", ")
+                                    : deTurno.faltan.length + " meses");
     }else if(!emb.naves){
       $("t-embarcado-sub").textContent = "carga el libro de reportería";
     }else if(!emb.conDato){
@@ -2388,17 +2471,24 @@
        de liquidado cuando hay proyecciones. */
     /* Verde cuando la cifra sale de la planilla —es la exacta—, ámbar
        cuando está armada a pedazos desde los CNN-EMB. */
-    $("kpi-t-embarcado").querySelector(".ico-marca").style.color = usaTurno ? OK
-      : ((emb.conDato && emb.conDato < emb.naves) || deTurno.faltan.length) ? AVISO
+    $("kpi-t-embarcado").querySelector(".ico-marca").style.color = completo ? OK
+      : (usaTurno || (emb.conDato && emb.conDato < emb.naves) || deTurno.faltan.length) ? AVISO
       : "var(--cmp-blue-400)";
     /* Contra el libro, que es la otra cifra que alguien va a citar. */
     var detalle = [];
-    if(usaTurno) detalle.push("Planilla de turno: " + mil(deTurno.total) + " t  (" + deTurno.meses.join(", ") + ")");
+    if(usaTurno) detalle.push("Planilla de turno: " + mil(deTurno.total) + " t  (" +
+      deTurno.conPlanilla.join(", ") + ")");
     if(emb.conDato) detalle.push("Calado de los CNN-EMB: " + mil(emb.total) + " t sobre " + emb.conDato + " naves");
     if(emb.naves) detalle.push("Libro (BL): " + mil(emb.cargoLibro) + " t sobre " + emb.naves + " naves");
     if(emb.pesometro > 0) detalle.push(mil(emb.pesometro) + " t vienen del pesómetro, no del calado");
     if(deTurno.faltan.length) detalle.push("Sin planilla de turno: " + deTurno.faltan.join(", "));
     $("kpi-t-embarcado").title = detalle.length ? detalle.join("\n") : "Sin datos para este periodo.";
+    /* La tendencia va por MES y no por trimestre como las otras cinco: el
+       tonelaje lo trae la planilla de turno, que es mensual, y un trimestre
+       esconde justo lo que se quiere ver —el mes flojo dentro de uno bueno.
+       Solo los meses con planilla: interpolar un mes sin cargar dibujaría
+       una caída que no ocurrió. */
+    pintarChispaEmbarcado(deTurno);
     $("t-espera").textContent = Math.round(t.espera).toLocaleString("es-CL");
     /* La cifra es la suma de la espera de todas las naves, no un promedio,
        y sin decir sobre cuántas se lee como si fuera una sola espera. El

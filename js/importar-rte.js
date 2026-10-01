@@ -395,9 +395,12 @@
       horasGira:       numero(valorPorEtiqueta(muellaje, "Tiempo Nave a la gira", "A", "D", 30)) || 0,
       eslora:          numero(valorPorEtiqueta(muellaje, "Eslora Nave", "A", "D", 30)),
       tarifaMuelle:    numero(valorPorEtiqueta(muellaje, "Tarifa muelle", "A", "D", 30)),
-      /* La hoja ya trae su propio NWH y su muellaje. Se leen para contrastar
-         contra lo que calcula la app: si no coinciden, uno de los dos está
-         mal y conviene saberlo antes de facturar. */
+      /* Las tres cifras del muellaje tal como las trae la hoja. Son las que
+         se muestran: es el documento que se factura y el que le van a poner
+         delante a uno. La app las recalcula igual, desde las espías, pero
+         para contrastar —si no coinciden, una de las dos está mal y hay que
+         saberlo antes de facturar, no después. */
+      horasMuellajeLibro: numero(valorPorEtiqueta(muellaje, "Tiempo Muellaje", "A", "D", 30)),
       nwhLibro:        numero(valorPorEtiqueta(muellaje, "(NWH) Net Wharfage Hours", "A", "D", 30)),
       muellajeLibro:   numero(valorPorEtiqueta(muellaje, "MUELLAJE (US$)", "A", "D", 30)),
       horasTotales:    totalEmbarque === undefined ? null : totalEmbarque,

@@ -492,18 +492,27 @@ function chequear(nombre, ok, detalle){
         ["NAVE DE PRUEBA 6", null, null, 206000],
         ["TOTAL", null, null, 206000]
       ]);
-      await pagina.setInputFiles("#archivo-rep", enero);
-      await pagina.waitForTimeout(1200);
-      await pagina.setInputFiles("#archivo-rep", febrero);
-      await pagina.waitForTimeout(1200);
-      sinErrores("cargar las planillas de turno");
-
       var leerFicha = function(){
         return pagina.evaluate(function(){
           return {valor: document.getElementById("t-embarcado").textContent.trim(),
                   sub: document.getElementById("t-embarcado-sub").textContent};
         });
       };
+      await pagina.setInputFiles("#archivo-rep", enero);
+      await pagina.waitForTimeout(1200);
+      /* Con una planilla de las dos: manda igual, y lo dice. La regla de
+         «todas o ninguna» se caía a sumar los CNN-EMB, y con nueve meses
+         cargados y uno sin planilla eso ponía el tonelaje de UNA nave donde
+         había nueve meses medidos. Sumar de menos está bien si se dice. */
+      var aMedias = await leerFicha();
+      chequear("con una planilla de dos, manda igual",
+        aMedias.valor === "814.000", JSON.stringify(aMedias));
+      chequear("y dice cuántos meses cubre y cuál falta",
+        /1 de 2 meses/.test(aMedias.sub) && /2026-02/.test(aMedias.sub), aMedias.sub);
+
+      await pagina.setInputFiles("#archivo-rep", febrero);
+      await pagina.waitForTimeout(1200);
+      sinErrores("cargar las planillas de turno");
       var conTurno = await leerFicha();
       /* 814.000 de enero más 206.000 de febrero. El concentrado queda fuera. */
       chequear("con las dos planillas, el total del periodo sale de ellas",
@@ -618,7 +627,7 @@ function chequear(nombre, ok, detalle){
     });
     var angostas = chispas.filter(function(c){ return !c.abre || c.ancho < c.ficha * 0.6; });
     chequear("las fichas con chispa le dan el ancho completo",
-      chispas.length === 6 && angostas.length === 0,
+      chispas.length === 7 && angostas.length === 0,
       chispas.length + " fichas · " + JSON.stringify(angostas));
 
     /* Las dos cargas son botones arriba; arrastrar pasó a la página entera. */

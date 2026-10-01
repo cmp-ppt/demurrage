@@ -223,7 +223,7 @@
               <!-- El draft survey no viene en el CNN-EMB: llega días después en
                    un correo de la agencia. Es el único campo del editor que se
                    espera llenar a mano, y manda sobre el pesómetro. -->
-              <div class="campo"><label for="rteCalado">Calado · draft survey</label>
+              <div class="campo"><label for="rteCalado">Calado</label>
                 <span class="con-unidad"><input type="number" id="rteCalado" step="1" min="0"><span class="unidad">TM</span></span>
                 <div class="pista">Llega por correo de la agencia días después del embarque. Escrito acá manda sobre el pesómetro y pasa a ser el tonelaje del cálculo.</div>
                 <!-- Y si la planilla de turno del mes ya está cargada, el
@@ -266,7 +266,7 @@
           <input type="hidden" id="rtePesometro08">
           <input type="hidden" id="rtePesometro09"><input type="hidden" id="rteTasaEfectiva">
           <input type="hidden" id="rteTasaHora"><input type="hidden" id="rteTasaDia">
-          <input type="hidden" id="rteHorasReloj"><input type="hidden" id="rteOrigenTonelaje"><input type="hidden" id="rteCaladoRte">
+          <input type="hidden" id="rteHorasReloj"><input type="hidden" id="rteOrigenTonelaje"><input type="hidden" id="rteCaladoRte"><input type="hidden" id="rteHorasMuellaje"><input type="hidden" id="rteNwh"><input type="hidden" id="rteMuellajeUsd">
 
           </div>
       </div>
@@ -451,11 +451,14 @@
         <!-- Las toneladas del periodo salen del calado del CNN-EMB, no del
              cargo del libro: el draft survey es lo que se liquida. Van junto
              al costo por tonelada, que es su divisor. -->
-        <div class="kpi" id="kpi-t-embarcado">
+        <div class="kpi con-chispa" id="kpi-t-embarcado">
           <svg class="ico ico-marca" aria-hidden="true"><use href="#ico-pila"></use></svg>
           <div class="kpi-lbl">TM embarcadas</div>
           <div class="kpi-val"><span id="t-embarcado">—</span><span class="kpi-unit">t</span></div>
           <div class="kpi-sub" id="t-embarcado-sub">&nbsp;</div>
+          <!-- Esta va por mes y no por trimestre como las otras cinco: el
+               tonelaje lo trae la planilla de turno, que es mensual. -->
+          <div class="kpi-chispa" id="ch-embarcado"></div>
         </div>
         <div class="kpi con-chispa" id="kpi-t-tonelada">
           <svg class="ico ico-marca" aria-hidden="true"><use href="#ico-balanza"></use></svg>
@@ -622,12 +625,6 @@
           <div class="kpi-val"><span id="p-calado">—</span><span class="kpi-unit">TM</span></div>
           <div class="kpi-sub" id="p-calado-sub">&nbsp;</div>
         </div>
-        <div class="kpi" id="kpi-tonelaje">
-          <svg class="ico ico-marca" aria-hidden="true"><use href="#ico-balanza"></use></svg>
-          <div class="kpi-lbl">Tonelaje del cálculo</div>
-          <div class="kpi-val"><span id="p-tonelaje">—</span><span class="kpi-unit">TM</span></div>
-          <div class="kpi-sub" id="p-tonelaje-sub">&nbsp;</div>
-        </div>
         <div class="kpi">
           <svg class="ico ico-marca" aria-hidden="true"><use href="#ico-grua"></use></svg>
           <div class="kpi-lbl">Tasa de operación efectiva</div>
@@ -649,6 +646,78 @@
       </div>
 
       <div id="p-aviso" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+<!-- ── Muellaje e índices ──────────────────────────────────────
+       Eran dos paneles de tres fichas, uno al lado del otro, con dos
+       cabeceras y dos cuerpos para seis cifras que se miran juntas. Una
+       tira de seis y una sola cabecera: mismas fichas, 100 px menos.
+
+       Va entre la productividad y la composición del tiempo: las tres miran
+       el mismo embarque y antes esta quedaba al final, después de los
+       gráficos, separada de las cifras con las que se lee. -->
+  <div class="panel" style="margin-bottom:12px">
+    <div class="panel-hd">
+      <span class="panel-title"><svg class="ico" aria-hidden="true"><use href="#ico-dolar"></use></svg>Muellaje e índices del embarque</span>
+      <span class="panel-note">tarifa × eslora × NWH · índices encadenados DF › U › FO</span>
+    </div>
+    <div class="panel-bd">
+      <div class="tira6 fichas">
+        <div class="kpi" id="kpi-m-tiempo"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-reloj"></use></svg>
+        <div class="kpi-lbl">Tiempo Muellaje</div>
+        <div class="kpi-val"><span id="m-tiempo">—</span></div>
+        <div class="kpi-sub" id="m-tiempo-sub">&nbsp;</div>
+        </div>
+        <div class="kpi" id="kpi-m-nwh"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-balanza"></use></svg>
+        <div class="kpi-lbl">NWH</div>
+        <div class="kpi-val"><span id="m-nwh">—</span></div>
+        <div class="kpi-sub" id="m-nwh-sub">&nbsp;</div>
+        </div>
+        <div class="kpi" id="kpi-m-monto"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-dolar"></use></svg>
+        <div class="kpi-lbl">Muellaje</div>
+        <div class="kpi-val"><span id="m-monto">—</span></div>
+        <div class="kpi-sub" id="m-monto-sub">&nbsp;</div>
+        </div>
+        <div class="kpi" id="kpi-i-df"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
+        <div class="kpi-lbl">DF · Disponibilidad</div>
+        <div class="kpi-val"><span id="i-df">—</span></div>
+        <div class="kpi-sub">
+        <div class="med-pista"><div class="med-fill" id="i-df-bar" style="width:0"></div></div>
+        <div id="i-df-sub">&nbsp;</div>
+        </div>
+        </div>
+        <div class="kpi" id="kpi-i-u"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
+        <div class="kpi-lbl">U · Utilización</div>
+        <div class="kpi-val"><span id="i-u">—</span></div>
+        <div class="kpi-sub">
+        <div class="med-pista"><div class="med-fill" id="i-u-bar" style="width:0"></div></div>
+        <div id="i-u-sub">&nbsp;</div>
+        </div>
+        </div>
+        <div class="kpi" id="kpi-i-fo"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
+        <div class="kpi-lbl">FO · Factor operacional</div>
+        <div class="kpi-val"><span id="i-fo">—</span></div>
+        <div class="kpi-sub">
+        <div class="med-pista"><div class="med-fill" id="i-fo-bar" style="width:0"></div></div>
+        <div id="i-fo-sub">&nbsp;</div>
+        </div>
+        </div>
+      </div>
+      <details class="sub" id="bl-muellaje">
+      <summary>Ver el desglose</summary>
+      <div class="sub-bd">
+      <table class="tabla">
+      <tbody>
+      <tr><td>Tiempo Muellaje</td><td class="n" id="m-tiempo-d">—</td></tr>
+      <tr><td>(−) Mtto. terminal y nave a la gira</td><td class="n" id="m-descuentos">—</td></tr>
+      <tr><td>Net Wharfage Hours (NWH)</td><td class="n" id="m-nwh-d">—</td></tr>
+      <tr><td>Eslora × tarifa</td><td class="n" id="m-base">—</td></tr>
+      <tr><td style="font-weight:600">Muellaje</td><td class="n" id="m-monto-d" style="font-weight:600">—</td></tr>
+      </tbody>
+      </table>
+      </div>
+      </details>
     </div>
   </div>
 
@@ -740,74 +809,6 @@
           <div class="leyenda" id="ley-balance"></div>
         </div>
       </div>
-    </div>
-  </div>
-
-<!-- ── Muellaje e índices ──────────────────────────────────────
-       Eran dos paneles de tres fichas, uno al lado del otro, con dos
-       cabeceras y dos cuerpos para seis cifras que se miran juntas. Una
-       tira de seis y una sola cabecera: mismas fichas, 100 px menos. -->
-  <div class="panel">
-    <div class="panel-hd">
-      <span class="panel-title"><svg class="ico" aria-hidden="true"><use href="#ico-dolar"></use></svg>Muellaje e índices del embarque</span>
-      <span class="panel-note">tarifa × eslora × NWH · índices encadenados DF › U › FO</span>
-    </div>
-    <div class="panel-bd">
-      <div class="tira6 fichas">
-        <div class="kpi" id="kpi-m-tiempo"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-reloj"></use></svg>
-        <div class="kpi-lbl">Entre espías</div>
-        <div class="kpi-val"><span id="m-tiempo">—</span></div>
-        <div class="kpi-sub" id="m-tiempo-sub">&nbsp;</div>
-        </div>
-        <div class="kpi" id="kpi-m-nwh"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-balanza"></use></svg>
-        <div class="kpi-lbl">NWH</div>
-        <div class="kpi-val"><span id="m-nwh">—</span></div>
-        <div class="kpi-sub" id="m-nwh-sub">&nbsp;</div>
-        </div>
-        <div class="kpi" id="kpi-m-monto"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-dolar"></use></svg>
-        <div class="kpi-lbl">Muellaje</div>
-        <div class="kpi-val"><span id="m-monto">—</span></div>
-        <div class="kpi-sub" id="m-monto-sub">&nbsp;</div>
-        </div>
-        <div class="kpi" id="kpi-i-df"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
-        <div class="kpi-lbl">DF · Disponibilidad</div>
-        <div class="kpi-val"><span id="i-df">—</span></div>
-        <div class="kpi-sub">
-        <div class="med-pista"><div class="med-fill" id="i-df-bar" style="width:0"></div></div>
-        <div id="i-df-sub">&nbsp;</div>
-        </div>
-        </div>
-        <div class="kpi" id="kpi-i-u"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
-        <div class="kpi-lbl">U · Utilización</div>
-        <div class="kpi-val"><span id="i-u">—</span></div>
-        <div class="kpi-sub">
-        <div class="med-pista"><div class="med-fill" id="i-u-bar" style="width:0"></div></div>
-        <div id="i-u-sub">&nbsp;</div>
-        </div>
-        </div>
-        <div class="kpi" id="kpi-i-fo"><svg class="ico ico-marca" aria-hidden="true"><use href="#ico-tendencia"></use></svg>
-        <div class="kpi-lbl">FO · Factor operacional</div>
-        <div class="kpi-val"><span id="i-fo">—</span></div>
-        <div class="kpi-sub">
-        <div class="med-pista"><div class="med-fill" id="i-fo-bar" style="width:0"></div></div>
-        <div id="i-fo-sub">&nbsp;</div>
-        </div>
-        </div>
-      </div>
-      <details class="sub" id="bl-muellaje">
-      <summary>Ver el desglose</summary>
-      <div class="sub-bd">
-      <table class="tabla">
-      <tbody>
-      <tr><td>Tiempo entre espías</td><td class="n" id="m-tiempo-d">—</td></tr>
-      <tr><td>(−) Mtto. terminal y nave a la gira</td><td class="n" id="m-descuentos">—</td></tr>
-      <tr><td>Net Wharfage Hours (NWH)</td><td class="n" id="m-nwh-d">—</td></tr>
-      <tr><td>Eslora × tarifa</td><td class="n" id="m-base">—</td></tr>
-      <tr><td style="font-weight:600">Muellaje</td><td class="n" id="m-monto-d" style="font-weight:600">—</td></tr>
-      </tbody>
-      </table>
-      </div>
-      </details>
     </div>
   </div>
 
