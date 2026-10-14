@@ -327,6 +327,89 @@ function chequear(nombre, ok, detalle){
     });
     chequear("y un navegador sin nada guardado la recibe", bajado, 813584);
 
+    /* ── El calado corregido de TODA la flota llega a la nube ──
+       Cargar la planilla corregía solo la nave abierta: las demás del mes se
+       quedaban con el calado provisorio del CNN-EMB, en el equipo y en la
+       nube, hasta que alguien las abriera una por una. Con treinta y tres
+       recaladas eso no se hace, y el que mira desde otro computador ve el
+       provisorio sin saber que lo es.
+
+       Se montan dos naves guardadas con el provisorio, un libro que las
+       nombra y la planilla de su mes. Ninguna de las dos se abre: se exige
+       que las dos filas del servidor traigan el calado de la planilla. */
+    var libroT = path.join(tmpT, "reporteria-turno.xlsx");
+    (function(){
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ["Quarter","VESSEL","INCO","PRODUCT","LAYCAN FROM","LAYCAN TO","ETA/ATA",
+         "NOR DATE","CARGO","ATB","LOADING START","LOADING FINISHED","DEM RATE",
+         "DEMURRAGE","DESPATCH","Comments"],
+        ["Q3","CHINA TRIUMPH","CFR","MIX", null, null, null, null, 200894,
+         null, null, new Date(2026,8,5,13,30), 30000, null, null, ""],
+        ["Q3","NISEKO QUEEN","CFR","MIX", null, null, null, null, 206000,
+         null, null, new Date(2026,8,24,10,0), 30000, null, null, ""]
+      ]), "PUNTA TOTORALILLO");
+      fs.writeFileSync(libroT, Buffer.from(XLSX.write(wb, {type:"array", bookType:"xlsx"})));
+    })();
+    /* Dos naves guardadas como las dejó la versión anterior: el calado
+       provisorio del CNN-EMB —que en estos libros es el del pesómetro— y sin
+       marca de escritura a mano. */
+    await pg.evaluate(function(){
+      localStorage.setItem("demurrage-ppt.flota.v1", JSON.stringify([
+        {campos:{codigo:"CNN-EMB-434", nave:"MN CHINA TRIUMPH", finCarga:"2026-09-05T13:30",
+                 primeraEspia:"2026-08-30T16:42", rteCalado:"202550", rtePesometro09:"202550",
+                 tonelaje:"202550", rteOrigenTonelaje:"calado"},
+         deducciones:[], actualizadoEn:"2026-09-10T10:00:00.000Z"},
+        {campos:{codigo:"CNN-EMB-440", nave:"MN NISEKO QUEEN", finCarga:"2026-09-24T10:00",
+                 primeraEspia:"2026-09-20T08:00", rteCalado:"208100", rtePesometro09:"208100",
+                 tonelaje:"208100", rteOrigenTonelaje:"calado"},
+         deducciones:[], actualizadoEn:"2026-09-25T10:00:00.000Z"}
+      ]));
+    });
+    await pg.reload({waitUntil:"networkidle"});
+    await pg.waitForTimeout(2000);
+    await pg.setInputFiles("#archivo-rep", libroT);
+    await pg.waitForTimeout(2000);
+    await pg.setInputFiles("#archivo-rep", planillaT);
+    await pg.waitForTimeout(2500);
+
+    var cal = function(codigo){
+      var f = api.filas[codigo];
+      return (f && f.campos ? f.campos.rteCalado : null) || "(sin fila)";
+    };
+    /* 135.872 de pellet feed más 65.022 de sinter: 200.894, el BL exacto. */
+    chequear("una nave guardada sube su calado de la planilla",
+      cal("CNN-EMB-434") === "200894", cal("CNN-EMB-434") + "  (provisorio 202550)");
+    /* 165.200 más 42.052: 207.252. */
+    chequear("y la segunda también",
+      cal("CNN-EMB-440") === "207252", cal("CNN-EMB-440") + "  (provisorio 208100)");
+    var f440 = (api.filas["CNN-EMB-440"] || {campos:{}}).campos;
+    chequear("el tonelaje del cálculo las sigue", f440.tonelaje === "207252", f440.tonelaje);
+    chequear("y queda dicho que viene del calado",
+      f440.rteOrigenTonelaje === "calado", f440.rteOrigenTonelaje);
+
+    /* Un calado escrito a mano no lo pisa ni la planilla ni esta pasada. */
+    await pg.evaluate(function(){
+      var f = JSON.parse(localStorage.getItem("demurrage-ppt.flota.v1"));
+      f.forEach(function(r){
+        if(r.campos.codigo === "CNN-EMB-440"){
+          r.campos.rteCalado = "199000"; r.campos.rteCaladoMano = "1";
+        }
+      });
+      localStorage.setItem("demurrage-ppt.flota.v1", JSON.stringify(f));
+    });
+    await pg.reload({waitUntil:"networkidle"});
+    await pg.waitForTimeout(2000);
+    await pg.setInputFiles("#archivo-rep", planillaT);
+    await pg.waitForTimeout(2000);
+    var aMano440 = await pg.evaluate(function(){
+      var f = JSON.parse(localStorage.getItem("demurrage-ppt.flota.v1"));
+      var r = f.filter(function(x){ return x.campos.codigo === "CNN-EMB-440"; })[0];
+      return r ? r.campos.rteCalado : "(sin registro)";
+    });
+    chequear("lo escrito a mano sobrevive a recargar la planilla",
+      aMano440 === "199000", aMano440);
+
     /* La comprobación que importa: lo que viaja es el token del usuario. */
     chequear("ya hubo peticiones de datos", autorizaciones.length > 0, autorizaciones.length + "");
     chequear("ninguna llevó la anon key en Authorization",

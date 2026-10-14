@@ -537,6 +537,54 @@
   }
 
   /**
+   * Rehace el calado de TODA la flota guardada con las planillas cargadas,
+   * y sube a la nube lo que cambie.
+   *
+   * `aplicarCaladoDeTurno` solo toca la recalada abierta. Cargar la planilla
+   * de septiembre corregía la nave que estuviera en pantalla y dejaba las
+   * otras tres del mes con el calado provisorio —en el equipo y en la nube—
+   * hasta que alguien las abriera una por una. Con treinta y tres recaladas
+   * en la temporada eso no se hace, y el que mira desde otro computador ve
+   * el provisorio sin saberlo.
+   *
+   * Salta las que llevan calado escrito a mano: ésas mandan sobre todo.
+   * Y salta la abierta, que la rehace `aplicarCaladoDeTurno` con el valor
+   * del formulario, donde puede haber ediciones sin guardar.
+   */
+  function rehacerCaladosDeFlota(){
+    var lista = temporada && temporada.datos ? temporada.datos.recaladas : null;
+    if(!lista || !lista.length || !flota.length) return 0;
+    var abierto = $("codigo").value.trim().toUpperCase();
+    var cambiados = 0;
+    flota.forEach(function(reg){
+      var c = (reg && reg.campos) || {};
+      if(!c.nave || c.rteCaladoMano === "1") return;
+      if(abierto && String(c.codigo || "").trim().toUpperCase() === abierto) return;
+      var par = CONC.emparejar(c.nave, lista, {
+        finCarga: c.finCarga, inicioCarga: c.inicioCarga,
+        primeraEspia: c.primeraEspia, arribo: c.arribo
+      });
+      /* Ambigua es la nave que repite recalada y cuyas fechas no deciden:
+         ponerle el calado de la otra es cambiarle el laytime en silencio. */
+      if(!par || par.ambigua || !par.fila) return;
+      var cal = CONC.caladoDeTurno(par.fila, turnos);
+      if(!cal || !cal.tm) return;
+      var nuevo = String(Math.round(cal.tm));
+      if(String(c.rteCalado || "") === nuevo) return;
+      c.rteCalado = nuevo;
+      /* Misma precedencia que en el formulario: el calado manda sobre el
+         pesómetro y pasa a ser el tonelaje del cálculo. */
+      c.tonelaje = nuevo;
+      c.rteOrigenTonelaje = "calado";
+      reg.actualizadoEn = new Date().toISOString();
+      cambiados++;
+      NUBE.guardar(reg, L).then(pintarEstadoNube);
+    });
+    if(cambiados){ FL.guardar(flota); refrescarSelector(); }
+    return cambiados;
+  }
+
+  /**
    * Llena el calado desde la planilla de turno si está vacío.
    *
    * El draft survey no viene en el CNN-EMB —llega días después en un correo
@@ -1407,6 +1455,9 @@
       if(Object.keys(turnos).length !== antes){
         pintarOrigenLibros();
         if(temporada) renderTemporada();
+        /* Un mes que cargó otra persona corrige el calado acá también. */
+        if(aplicarCaladoDeTurno()) calcular();
+        rehacerCaladosDeFlota();
       }
       if(!pendientes.length) return true;
       return NUBE.subirTurnos(turnos, pendientes).then(function(ok){
@@ -1451,13 +1502,19 @@
     if(temporada) renderTemporada();
     /* Si la recalada abierta es de este mes y no tenía calado, ya lo tiene. */
     if(aplicarCaladoDeTurno()) calcular();
+    /* Y las demás naves del mes, que no están en pantalla: su calado se
+       rehace igual y sube a la nube. Si no, quedan con el provisorio hasta
+       que alguien las abra una por una. */
+    var rehechos = rehacerCaladosDeFlota();
 
     var mil = function(n){ return Math.round(n).toLocaleString("es-CL"); };
     var html = "<strong>" + MES[r.periodo.mes] + " " + r.periodo.anio + "</strong>: " +
       mil(r.totalMineral) + " t embarcadas en " + r.porNave.length +
       (r.porNave.length === 1 ? " nave" : " naves") + "." +
       (r.totalOtros ? " (" + mil(r.totalOtros) + " t de concentrado y MLC quedan fuera: " +
-        "no están en el libro de demurrage.)" : "");
+        "no están en el libro de demurrage.)" : "") +
+      (rehechos ? " " + rehechos + (rehechos === 1 ? " nave guardada tomó" : " naves guardadas tomaron") +
+        " su calado." : "");
     if(r.avisos.length){
       html += "<ul><li>" + r.avisos.map(esc).join("</li><li>") + "</li></ul>";
     }
@@ -2156,9 +2213,11 @@
     var trimestres = TRI.porTrimestre(r.datos);
     temporada = {datos: r.datos, trimestres: trimestres, diagnostico: TRI.diagnostico(trimestres)};
     guardarTemporada();
-    /* El libro es lo que permite cruzar la recalada abierta con la planilla:
-       el calado sale del mes de cierre, y el mes de cierre lo da el libro. */
+    /* El libro es lo que permite cruzar las recaladas con la planilla: el
+       calado sale del mes de cierre, y el mes de cierre lo da el libro. Sin
+       él no hay con qué emparejar, así que acá se rehace todo. */
     if(aplicarCaladoDeTurno()) calcular();
+    rehacerCaladosDeFlota();
 
     var html = "<strong>" + esc(nombre || "Libro") + "</strong>: " +
       r.datos.recaladas.length + " recaladas en " + trimestres.length +
