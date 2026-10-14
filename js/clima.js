@@ -11,17 +11,25 @@
 (function(global){
   "use strict";
 
-  /* Puerto Punta Totoralillo: 26°51'17"S 70°48'53"W, el punto que devuelve
-     Windy al buscar el terminal por nombre. El valor anterior —27,03 / 70,85—
-     caía unos 20 km al sur, prácticamente sobre Caldera, y devolvía el viento
-     de otra bahía. */
+  /* Puerto Punta Totoralillo: 26°50'52"S 70°48'53"W, el sitio de atraque.
+     Es DONDE ESTÁ LA NAVE, que es donde se mide: el viento que detiene el
+     embarque es el del shiploader y el costado del buque, no el de tierra
+     adentro.
+
+     Dos correcciones anteriores, para que nadie las repita. El primer valor
+     —27,03 / 70,85— caía unos 20 km al sur, casi sobre Caldera, y devolvía
+     el viento de otra bahía. El segundo —26,8547— era el punto que devuelve
+     Windy al buscar el terminal por nombre, pero ése cae en tierra, en
+     medio del área de proceso, 770 m al sur del sitio: cerro y terreno de
+     por medio alteran el viento justo en lo que se quiere medir. */
   var PUERTO = {
     nombre: "Puerto Punta Totoralillo",
-    lat: -26.8547, lon: -70.8147,
-    /* El modelo marino solo tiene datos en celdas de mar, y el muelle está en
-       tierra (26 m de elevación según el modelo). La marejada se pide unas
-       millas al oeste, frente al terminal, que es de donde le llega. */
-    latMar: -26.8547, lonMar: -70.8800,
+    lat: -26.8478, lon: -70.8147,
+    /* La marejada se pide mar adentro, a la misma latitud del sitio: el
+       modelo marino solo responde en celdas de mar, y tan pegado a la costa
+       la celda puede ser de tierra y volver vacía. Son unas 3,5 millas al
+       oeste, que es de donde le llega la marejada al terminal. */
+    latMar: -26.8478, lonMar: -70.8800,
     zona: "America/Santiago"
   };
 

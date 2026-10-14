@@ -224,7 +224,7 @@ function chequear(nombre, ok, detalle){
      por encima de las coordenadas del enlace, y el marcador caía 770 m al
      norte del muelle, sobre el agua. */
   chequear("Windy apunta a Punta Totoralillo",
-    windy.indexOf("-26.8547") > 0 && windy.indexOf("-70.8147") > 0 &&
+    windy.indexOf("-26.8478") > 0 && windy.indexOf("-70.8147") > 0 &&
     windy.indexOf("m:") < 0, windy);
 
   await pagina.click('.tab[data-vista="operacion"]');

@@ -57,8 +57,9 @@ de otra persona.
 ### Clima y alertas
 
 El panel de clima consulta **Open-Meteo** (API abierta, sin clave ni registro) para el
-punto del terminal (**26°51′17″S 70°48′53″W**, el que devuelve Windy al buscar el puerto
-por nombre) y devuelve dos series horarias: el pronóstico
+sitio de atraque (**26°50′52″S 70°48′53″W**, donde está la nave y donde se mide: el
+viento que detiene el embarque es el del costado del buque, no el de tierra adentro)
+y devuelve dos series horarias: el pronóstico
 atmosférico (viento, ráfagas, dirección, visibilidad, precipitación) y el marino
 (altura, período y dirección de la marejada), a tres días.
 

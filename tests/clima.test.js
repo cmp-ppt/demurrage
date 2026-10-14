@@ -97,7 +97,10 @@ chequear("el punto marino no es el del muelle",
 chequear("y está mar adentro, al oeste", C.PUERTO.lonMar < C.PUERTO.lon, true);
 chequear("a la misma latitud del terminal", C.PUERTO.latMar, C.PUERTO.lat);
 /* Punta Totoralillo, no Caldera: el punto anterior caía 20 km al sur. */
-chequear("latitud del terminal", Math.abs(C.PUERTO.lat + 26.8547) < 1e-6, true);
+/* El sitio de atraque, no el terminal en tierra: el viento que detiene el
+   embarque se mide en la nave. 26,8547 era el punto que devuelve Windy al
+   buscar el puerto por nombre, y cae 770 m al sur, en el área de proceso. */
+chequear("latitud del sitio de atraque", Math.abs(C.PUERTO.lat + 26.8478) < 1e-6, true);
 chequear("longitud del terminal", Math.abs(C.PUERTO.lon + 70.8147) < 1e-6, true);
 
 
