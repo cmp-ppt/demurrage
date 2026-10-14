@@ -1,0 +1,62 @@
+# Aviso por correo cuando el pronóstico cruza el umbral de operación del
+# terminal. Los umbrales son los de js/clima.js, los mismos del tablero.
+#
+# Qué hay que configurar una vez, en Settings → Secrets and variables →
+# Actions del repositorio:
+#   RESEND_API_KEY  (secret)    clave de https://resend.com
+#   ALERTA_DE       (variable)  remitente verificado en Resend
+#   ALERTA_PARA     (variable)  destinatarios, separados por coma
+#
+# Sin esos tres el trabajo corre igual y escribe el correo en el registro de
+# la ejecución, sin enviarlo: sirve para ver qué se mandaría antes de
+# enchufar el correo de verdad.
+name: Alerta de clima
+
+on:
+  schedule:
+    # Cada hora. GitHub puede atrasar la ejecución algunos minutos cuando hay
+    # cola; para un aviso con 24 h de horizonte eso no cambia nada.
+    - cron: "17 * * * *"
+  workflow_dispatch:          # y a mano, para probar
+
+# Una sola ejecución a la vez: dos en paralelo leerían el mismo estado
+# guardado y mandarían el aviso dos veces.
+concurrency:
+  group: alerta-clima
+  cancel-in-progress: false
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # El último estado conocido, para avisar solo cuando CRUZA el umbral y
+      # no en cada revisión. La caché se renueva en cada corrida; si se
+      # pierde, el peor caso es un aviso repetido.
+      - name: Recuperar el último estado
+        uses: actions/cache/restore@v4
+        with:
+          path: .estado-alerta
+          key: alerta-clima-${{ github.run_id }}
+          restore-keys: alerta-clima-
+
+      - name: Revisar el pronóstico
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          ALERTA_DE: ${{ vars.ALERTA_DE }}
+          ALERTA_PARA: ${{ vars.ALERTA_PARA }}
+          ALERTA_ESTADO: .estado-alerta/clima.json
+          ALERTA_HORAS: "24"
+        run: node scripts/alerta-clima.js
+
+      - name: Guardar el estado
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .estado-alerta
+          key: alerta-clima-${{ github.run_id }}

@@ -16,3 +16,7 @@ Thumbs.db
 # Node (por si más adelante se agrega tooling)
 node_modules/
 npm-debug.log*
+
+# Estado del aviso de clima (lo guarda GitHub Actions en su caché)
+.estado-alerta/
+.estado-alerta.json
