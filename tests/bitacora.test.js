@@ -152,5 +152,76 @@ chequear("el día con dos causas no se cuenta dos veces", r.restringido, 0);
 chequear("cerrado + restringido no pasa del total", r.cerrado + r.restringido <= r.total, true);
 chequear("un rango inválido no inventa días", B.resumen([paro], "x", "y").total, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("La hora del evento");
+/* Un puerto que cierra a las 14:00 y reabre a las 06:30 del día siguiente no
+   son dos días cerrados. Sin hora el evento cubre las jornadas completas,
+   que es como se comunica y como quedaron los eventos ya registrados. */
+chequear("una hora se normaliza", B.aHora("9:5"), "");
+chequear("con dos dígitos de minuto sí", B.aHora("9:05"), "09:05");
+chequear("y se rellena la hora", B.aHora("7:30"), "07:30");
+chequear("25:00 no es una hora", B.aHora("25:00"), "");
+chequear("ni 10:75", B.aHora("10:75"), "");
+chequear("vacío no inventa", B.aHora(""), "");
+chequear("minutos desde medianoche", B.enMinutos("06:30"), 390);
+
+/* Sin horas: jornadas completas, 24 por día. Es la cuenta con la que se
+   registraron los eventos anteriores y no puede cambiar. */
+chequear("un día sin hora son 24 h",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-21"}), 24);
+chequear("dos días sin hora son 48 h",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-22"}), 48);
+/* Con horas: lo que se va a citar al liquidar. */
+chequear("de 14:00 a 18:30 el mismo día",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-21", horaDesde:"14:00", horaHasta:"18:30"}), 4.5);
+/* El caso que motivó el cambio: cierre de tarde que termina a la mañana
+   siguiente. Antes contaba 48 h; son 16,5. */
+chequear("de las 14:00 a las 06:30 del día siguiente",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-22", horaDesde:"14:00", horaHasta:"06:30"}), 16.5);
+/* Una sola hora acota solo ese extremo. */
+chequear("solo la de inicio corre hasta medianoche",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-21", horaDesde:"18:00"}), 6);
+chequear("solo la de término parte de medianoche",
+  B.largoEnHoras({desde:"2026-09-21", hasta:"2026-09-21", horaHasta:"06:00"}), 6);
+chequear("sin fechas no hay horas", B.largoEnHoras({}), 0);
+chequear("sin evento tampoco", B.largoEnHoras(), 0);
+
+bloque("Horas al revés");
+/* Mismo gesto que con las fechas: marcar «de 18:00 a 06:00» en un solo día
+   es el arrastre al revés, no un turno de noche. */
+var noche = B.normalizar({desde:"2026-09-21", horaDesde:"18:00", horaHasta:"06:00", estado:"cerrado"});
+chequear("dentro del día se dan vuelta: desde", noche.horaDesde, "06:00");
+chequear("y hasta", noche.horaHasta, "18:00");
+/* Pero entre días distintos NO: ahí 18:00 → 06:00 es exactamente el cierre
+   nocturno que se quiere registrar. */
+var cruza = B.normalizar({desde:"2026-09-21", hasta:"2026-09-22",
+                          horaDesde:"18:00", horaHasta:"06:00", estado:"cerrado"});
+chequear("entre dos días se respeta", cruza.horaDesde, "18:00");
+chequear("y su término", cruza.horaHasta, "06:00");
+chequear("y dura 12 h", B.largoEnHoras(cruza), 12);
+/* Si se da vuelta el rango de fechas, las horas lo siguen. */
+var alReves = B.normalizar({desde:"2026-09-22", hasta:"2026-09-21",
+                            horaDesde:"06:00", horaHasta:"18:00", estado:"cerrado"});
+chequear("al dar vuelta las fechas, las horas acompañan", alReves.horaDesde, "18:00");
+chequear("y la de término", alReves.horaHasta, "06:00");
+
+bloque("Cómo se lee el rango");
+chequear("un día sin hora, la fecha sola",
+  B.rotuloRango({desde:"2026-09-21", hasta:"2026-09-21"}), "2026-09-21");
+chequear("un día con horas",
+  B.rotuloRango({desde:"2026-09-21", hasta:"2026-09-21", horaDesde:"14:00", horaHasta:"18:30"}),
+  "2026-09-21 14:00 → 18:30");
+chequear("dos días con horas",
+  B.rotuloRango({desde:"2026-09-21", hasta:"2026-09-22", horaDesde:"14:00", horaHasta:"06:30"}),
+  "2026-09-21 14:00 → 2026-09-22 06:30");
+chequear("dos días sin horas",
+  B.rotuloRango({desde:"2026-09-21", hasta:"2026-09-22"}), "2026-09-21 → 2026-09-22");
+chequear("sin evento, vacío", B.rotuloRango(), "");
+
+/* El calendario sigue pintando jornadas: un cierre de 14:00 a 06:30 toca
+   dos casillas, y así tiene que verse. */
+chequear("las horas no cambian los días que cubre",
+  B.dias({desde:"2026-09-21", hasta:"2026-09-22", horaDesde:"14:00", horaHasta:"06:30"}).length, 2);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

@@ -179,7 +179,43 @@ function chequear(nombre, ok, detalle){
     chequear("y el panel cuenta los días del mes que muestra",
       new RegExp(enElMes + " d cerrado").test(guardado.nota),
       guardado.nota + " (se esperaban " + enElMes + ")");
-    sinErrores("registrar un evento en la bitácora");
+    /* La hora: un cierre de 14:00 a 06:30 del día siguiente no son dos días
+       cerrados, son 16,5 h, y esa diferencia se discute al liquidar. Se
+       vuelve a guardar el mismo evento con horas y se exige que la tabla lo
+       cuente en horas y que el calendario siga pintando las dos jornadas. */
+    await pagina.fill("#bit-hora-desde", "14:00");
+    await pagina.fill("#bit-hora-hasta", "06:30");
+    await pagina.click("#bit-guardar"); await pagina.waitForTimeout(400);
+    var conHora = await pagina.evaluate(function(){
+      var fila = document.querySelector("#tb-bitacora tr[data-id] td");
+      return {texto: fila ? fila.textContent.trim() : "",
+              pintados: document.querySelectorAll(".cal-dia.cerrado").length,
+              filas: document.querySelectorAll("#tb-bitacora tr[data-id]").length,
+              aviso: document.getElementById("bit-aviso").textContent};
+    });
+    var cruzaMes = ayerIso.slice(0, 7) !== hoyIso.slice(0, 7);
+    chequear("la tabla cuenta las horas, no los días",
+      /16,50 h/.test(conHora.texto), conHora.texto);
+    chequear("y el rango lleva las dos horas",
+      conHora.texto.indexOf("14:00") > 0 && conHora.texto.indexOf("06:30") > 0, conHora.texto);
+    chequear("el aviso de guardado también", /16,50 h/.test(conHora.aviso), conHora.aviso);
+    /* El calendario sigue siendo por jornada: el cierre toca dos casillas
+       aunque empiece a media tarde. Si el evento cruza el cambio de mes,
+       solo una cae en el mes que se muestra. */
+    chequear("el calendario sigue pintando las dos jornadas",
+      conHora.pintados === (cruzaMes ? 1 : 2) && conHora.filas === 1,
+      JSON.stringify(conHora));
+
+    /* Y se puede volver atrás: sin horas, vuelve a contar jornadas. */
+    await pagina.fill("#bit-hora-desde", "");
+    await pagina.fill("#bit-hora-hasta", "");
+    await pagina.click("#bit-guardar"); await pagina.waitForTimeout(400);
+    var sinHora = await pagina.evaluate(function(){
+      var fila = document.querySelector("#tb-bitacora tr[data-id] td");
+      return fila ? fila.textContent.trim() : "";
+    });
+    chequear("borrar las horas vuelve a contar días", /2 d/.test(sinHora), sinHora);
+    sinErrores("poner y quitar la hora del evento");
   }
 
   /* Windy abre en el terminal, no en el mapa del mundo. */

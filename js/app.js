@@ -1660,10 +1660,13 @@
       return;
     }
     tb.innerHTML = bitacora.map(function(ev){
-      var dias = BIT.largoEnDias(ev.desde, ev.hasta);
-      var rango = ev.desde === ev.hasta ? ev.desde : ev.desde + " → " + ev.hasta;
+      /* Las horas cuando las hay: un cierre de 14:00 a 06:30 son 16,5 h, y
+         «2 d» en la tabla es lo que se iba a citar al liquidar. */
+      var tieneHora = ev.horaDesde || ev.horaHasta;
+      var largo = tieneHora ? hDec(BIT.largoEnHoras(ev))
+                            : BIT.largoEnDias(ev.desde, ev.hasta) + " d";
       return '<tr data-id="' + esc(ev.id) + '">' +
-        "<td>" + esc(rango) + ' <span class="text-3">(' + dias + " d)</span></td>" +
+        "<td>" + esc(BIT.rotuloRango(ev)) + ' <span class="text-3">(' + esc(largo) + ")</span></td>" +
         '<td style="color:' + (ev.estado === "cerrado" ? CRITICO : ev.estado === "restringido" ? MAYOR : OK) + '">' +
           esc(BIT.ESTADOS[ev.estado].rotulo) + "</td>" +
         "<td>" + esc(ev.causa || "—") + "</td>" +
@@ -1682,6 +1685,8 @@
     $("bit-form-t").textContent = "Registrar un evento";
     $("bit-desde").value = desde || BIT.hoyIso();
     $("bit-hasta").value = hasta || desde || BIT.hoyIso();
+    $("bit-hora-desde").value = "";
+    $("bit-hora-hasta").value = "";
     $("bit-estado").value = "cerrado";
     $("bit-causa").value = "";
     $("bit-nota-txt").value = "";
@@ -1694,6 +1699,8 @@
     $("bit-form-t").textContent = "Editar el evento";
     $("bit-desde").value = ev.desde;
     $("bit-hasta").value = ev.hasta;
+    $("bit-hora-desde").value = ev.horaDesde || "";
+    $("bit-hora-hasta").value = ev.horaHasta || "";
     $("bit-estado").value = ev.estado;
     $("bit-causa").value = ev.causa;
     $("bit-nota-txt").value = ev.nota;
@@ -1715,6 +1722,8 @@
       id: bitEditando || undefined,
       desde: $("bit-desde").value,
       hasta: $("bit-hasta").value || $("bit-desde").value,
+      horaDesde: $("bit-hora-desde").value,
+      horaHasta: $("bit-hora-hasta").value,
       estado: $("bit-estado").value,
       causa: $("bit-causa").value,
       nota: $("bit-nota-txt").value,
@@ -1734,7 +1743,7 @@
     if(d) bitMes = new Date(d.getFullYear(), d.getMonth(), 1);
     renderBitacora();
     bitAviso("Guardado: " + esc(BIT.ESTADOS[norm.estado].rotulo.toLowerCase()) + " " +
-      (norm.desde === norm.hasta ? "el " + norm.desde : "del " + norm.desde + " al " + norm.hasta) + ".", "ok");
+      esc(BIT.rotuloRango(norm)) + " · " + esc(hDec(BIT.largoEnHoras(norm))) + ".", "ok");
     bitEditando = norm.id;
     $("bit-form-t").textContent = "Editar el evento";
     $("bit-borrar").hidden = false;

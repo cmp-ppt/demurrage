@@ -403,6 +403,7 @@
     var filas = eventos.map(function(ev){
       return {
         id: ev.id, desde: ev.desde, hasta: ev.hasta, estado: ev.estado,
+        hora_desde: ev.horaDesde || null, hora_hasta: ev.horaHasta || null,
         causa: ev.causa || "", nota: ev.nota || "",
         registrado_por: ev.registradoPor || "",
         actualizado_en: ev.actualizadoEn || new Date().toISOString()
@@ -452,6 +453,7 @@
     }).then(function(filas){
       return (Array.isArray(filas) ? filas : []).map(function(f){
         return {id: f.id, desde: f.desde, hasta: f.hasta, estado: f.estado,
+                horaDesde: f.hora_desde || "", horaHasta: f.hora_hasta || "",
                 causa: f.causa || "", nota: f.nota || "",
                 registradoPor: f.registrado_por || "",
                 actualizadoEn: f.actualizado_en || ""};

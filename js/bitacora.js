@@ -10,10 +10,17 @@
  * explicar tres días de detención, lo que sirve es este registro escrito el
  * día que ocurrió, no la reconstrucción de memoria tres meses después.
  *
- * Un evento cubre un rango de días completos, no horas. Es a propósito: el
- * cierre del puerto se decide y se comunica por jornada, y fingir precisión
- * de minutos invitaría a discutir un dato que nadie midió. Las horas finas
- * de una detención ya viven en el CNN-EMB, que es donde corresponden.
+ * Un evento cubre días, y opcionalmente las horas dentro de esos días. La
+ * primera versión era solo por jornada —el cierre se decide y se comunica
+ * así— pero un puerto que cierra a las 14:00 y reabre a las 06:30 del día
+ * siguiente no son dos días cerrados, y al liquidar esa diferencia son
+ * horas de laytime que alguien va a discutir.
+ *
+ * Las horas son opcionales a propósito. Sin ellas el evento cubre las
+ * jornadas completas, que es como se comunica y como quedaron registrados
+ * los eventos anteriores; con ellas se acota. Un formulario que exija la
+ * hora se llena tarde o no se llena, y un registro escrito el mismo día sin
+ * hora vale más que uno exacto que nadie escribió.
  */
 (function(global){
   "use strict";
@@ -64,6 +71,51 @@
 
   function hoyIso(ahora){ return aIso(ahora ? new Date(ahora) : new Date()); }
 
+  /** "HH:MM" si es una hora del día; "" si no. Acepta "9:5" y "09:05". */
+  function aHora(t){
+    var m = /^(\d{1,2}):(\d{2})/.exec(String(t == null ? "" : t).trim());
+    if(!m) return "";
+    var h = +m[1], mi = +m[2];
+    if(h > 23 || mi > 59) return "";
+    return String(h).padStart(2, "0") + ":" + String(mi).padStart(2, "0");
+  }
+
+  /** Minutos desde la medianoche, para comparar dos horas. */
+  function enMinutos(t){
+    var h = aHora(t);
+    return h ? (+h.slice(0, 2)) * 60 + (+h.slice(3)) : null;
+  }
+
+  /**
+   * Cuánto duró el evento, en horas.
+   *
+   * Sin horas, el evento cubre jornadas completas y son 24 por día: es lo
+   * que se comunica cuando se cierra el puerto «el martes y el miércoles».
+   * Con horas, se cuenta desde la de inicio hasta la de término, que es lo
+   * que se va a citar al liquidar.
+   */
+  function largoEnHoras(ev){
+    if(!ev) return 0;
+    var dias = largoEnDias(ev.desde, ev.hasta);
+    if(!dias) return 0;
+    var hd = enMinutos(ev.horaDesde), hh = enMinutos(ev.horaHasta);
+    if(hd === null && hh === null) return dias * 24;
+    if(hd === null) hd = 0;
+    if(hh === null) hh = 24 * 60;
+    var min = (dias - 1) * 24 * 60 + (hh - hd);
+    return min > 0 ? min / 60 : 0;
+  }
+
+  /** El rango como se lee: «21-09 14:00 → 22-09 06:30». */
+  function rotuloRango(ev){
+    if(!ev || !ev.desde) return "";
+    var hd = aHora(ev.horaDesde), hh = aHora(ev.horaHasta);
+    var unDia = ev.desde === ev.hasta;
+    if(unDia && !hd && !hh) return ev.desde;
+    if(unDia) return ev.desde + " " + (hd || "00:00") + " → " + (hh || "24:00");
+    return ev.desde + (hd ? " " + hd : "") + " → " + ev.hasta + (hh ? " " + hh : "");
+  }
+
   /** Días de diferencia entre dos ISO, inclusivo. */
   function largoEnDias(desde, hasta){
     var a = deIso(desde), b = deIso(hasta);
@@ -90,12 +142,24 @@
     var hasta = String(ev.hasta || desde).slice(0, 10);
     if(!deIso(desde)) return null;
     if(!deIso(hasta)) hasta = desde;
-    if(deIso(hasta) < deIso(desde)){ var t = desde; desde = hasta; hasta = t; }
+    var horaDesde = aHora(ev.horaDesde), horaHasta = aHora(ev.horaHasta);
+    if(deIso(hasta) < deIso(desde)){
+      var t = desde; desde = hasta; hasta = t;
+      var th = horaDesde; horaDesde = horaHasta; horaHasta = th;
+    }
+    /* Dentro del mismo día el que da vuelta el rango es el reloj, no el
+       calendario: «de 18:00 a 06:00» marcado en un solo día es casi siempre
+       el arrastre al revés, igual que con las fechas. */
+    if(desde === hasta && horaDesde && horaHasta && enMinutos(horaHasta) < enMinutos(horaDesde)){
+      var tm = horaDesde; horaDesde = horaHasta; horaHasta = tm;
+    }
     var estado = ESTADOS[ev.estado] ? ev.estado : "cerrado";
     return {
       id: ev.id || nuevoId(ahora),
       desde: desde,
       hasta: hasta,
+      horaDesde: horaDesde,
+      horaHasta: horaHasta,
       estado: estado,
       causa: String(ev.causa || "").trim(),
       nota: String(ev.nota || "").trim(),
@@ -245,6 +309,7 @@
   var api = {
     ESTADOS: ESTADOS, CAUSAS: CAUSAS,
     aIso: aIso, deIso: deIso, hoyIso: hoyIso, largoEnDias: largoEnDias,
+    aHora: aHora, enMinutos: enMinutos, largoEnHoras: largoEnHoras, rotuloRango: rotuloRango,
     normalizar: normalizar, validar: validar, dias: dias,
     porDia: porDia, delDia: delDia,
     agregar: agregar, eliminar: eliminar, ordenar: ordenar,

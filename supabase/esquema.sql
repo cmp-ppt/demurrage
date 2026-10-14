@@ -118,6 +118,11 @@ create table if not exists public.demurrage_bitacora (
   desde           date not null,
   hasta           date not null,
   estado          text not null,             -- abierto | restringido | cerrado
+  -- La hora es opcional: en blanco el evento cubre las jornadas completas,
+  -- que es como se comunica el cierre y como quedaron los eventos que ya
+  -- estaban registrados. Con hora se acota, y es lo que se cita al liquidar.
+  hora_desde      text,                      -- "HH:MM" o null
+  hora_hasta      text,                      -- "HH:MM" o null
   causa           text not null default '',
   nota            text not null default '',
   registrado_por  text not null default '',  -- correo de quien lo anotó
@@ -125,6 +130,10 @@ create table if not exists public.demurrage_bitacora (
   constraint demurrage_bitacora_rango  check (hasta >= desde),
   constraint demurrage_bitacora_estado check (estado in ('abierto','restringido','cerrado'))
 );
+
+-- Para los proyectos que ya tienen la tabla creada sin estas dos columnas.
+alter table public.demurrage_bitacora add column if not exists hora_desde text;
+alter table public.demurrage_bitacora add column if not exists hora_hasta text;
 
 -- Buscar por mes es lo único que hace la aplicación con esta tabla.
 create index if not exists demurrage_bitacora_desde on public.demurrage_bitacora (desde desc);

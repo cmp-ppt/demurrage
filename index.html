@@ -1216,6 +1216,16 @@
               <div class="campo"><label for="bit-desde">Desde</label><input type="date" id="bit-desde"></div>
               <div class="campo"><label for="bit-hasta">Hasta</label><input type="date" id="bit-hasta"></div>
             </div>
+            <!-- La hora es opcional: sin ella el evento cubre las jornadas
+                 completas, que es como se comunica el cierre. Con ella se
+                 acota, y es lo que se cita al liquidar. -->
+            <div class="fila f2">
+              <div class="campo"><label for="bit-hora-desde">Hora de inicio</label>
+                <input type="time" id="bit-hora-desde"></div>
+              <div class="campo"><label for="bit-hora-hasta">Hora de término</label>
+                <input type="time" id="bit-hora-hasta"></div>
+            </div>
+            <div class="pista" style="margin:-4px 0 10px">Opcionales. En blanco, el evento cubre los días completos.</div>
             <div class="campo">
               <label for="bit-estado">Estado del puerto</label>
               <select id="bit-estado">
