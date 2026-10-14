@@ -220,8 +220,12 @@ function chequear(nombre, ok, detalle){
 
   /* Windy abre en el terminal, no en el mapa del mundo. */
   var windy = await pagina.getAttribute("#enlace-windy", "href");
+  /* Sin token `m:` al final: Windy lo usa para restaurar una vista guardada
+     por encima de las coordenadas del enlace, y el marcador caía 770 m al
+     norte del muelle, sobre el agua. */
   chequear("Windy apunta a Punta Totoralillo",
-    windy.indexOf("-26.85") > 0 && windy.indexOf("-70.81") > 0, windy);
+    windy.indexOf("-26.8547") > 0 && windy.indexOf("-70.8147") > 0 &&
+    windy.indexOf("m:") < 0, windy);
 
   await pagina.click('.tab[data-vista="operacion"]');
   await pagina.waitForTimeout(300);

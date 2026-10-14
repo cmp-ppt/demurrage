@@ -3577,9 +3577,14 @@
      de fricción que hace que el enlace no se use. El marcador lleva las
      coordenadas del puerto, no las del punto de mar donde se pide la
      marejada: quien abre Windy quiere mirar el muelle. */
+  /* Sin el `m:` del final. Era un token de estado de mapa copiado de una URL
+     de Windy, y Windy lo usa para restaurar la vista guardada por encima de
+     las coordenadas del enlace: el marcador caía 770 m al norte del muelle,
+     sobre el agua (Windy mostraba «elevación 0 m»). Con las coordenadas
+     solas abre donde corresponde. */
   $("enlace-windy").href = "https://www.windy.com/" +
     CLIMA.PUERTO.lat + "/" + CLIMA.PUERTO.lon +
-    "?waves," + CLIMA.PUERTO.lat + "," + CLIMA.PUERTO.lon + ",10,m:eyEagdJ";
+    "?waves," + CLIMA.PUERTO.lat + "," + CLIMA.PUERTO.lon + ",13";
   NUBE.alCambiar(pintarEstadoNube);
   flota = FL.cargar();
   refrescarSelector();
