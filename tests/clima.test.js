@@ -137,5 +137,69 @@ chequear("2,0 m de marejada restringen",
 chequear("2,5 m cierran",
   C.estadoPuerto(C.evaluar({ola:2.5}).nivel).titulo, "CERRADO");
 
-console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
-process.exit(fallas === 0 ? 0 : 1);
+/* ---------------------------------------------------------------- */
+/* Reintento ante un servidor que falla. Contra un servidor local, no contra
+   Open-Meteo: la prueba tiene que correr sin red y sin gastarle consultas a
+   nadie. Es lo que pasó de verdad —un 503 en pantalla— y el mensaje culpaba
+   a la red del terminal, que no tenía nada que ver. */
+var http = require("http");
+
+function servidor(guion){
+  var i = 0;
+  var srv = http.createServer(function(q, r){
+    var paso = guion[Math.min(i++, guion.length - 1)];
+    r.writeHead(paso.codigo, {"Content-Type":"application/json"});
+    r.end(JSON.stringify(paso.cuerpo || {}));
+  });
+  return new Promise(function(ok){
+    srv.listen(0, "127.0.0.1", function(){
+      ok({srv: srv, url: "http://127.0.0.1:" + srv.address().port + "/", pedidas: function(){ return i; }});
+    });
+  });
+}
+
+(async function(){
+  bloque("Cuando Open-Meteo falla");
+  /* 503 y después bien: la persona no tiene que apretar «Consultar» otra vez
+     sin saber que con eso bastaba. */
+  var s1 = await servidor([{codigo:503}, {codigo:503}, {codigo:200, cuerpo:{hourly:{time:[]}}}]);
+  var ok1 = await C.pedir(s1.url, "pronóstico").then(function(){ return true; },
+                          function(){ return false; });
+  chequear("un 503 pasajero se reintenta y sale bien", ok1, true);
+  chequear("y costó tres intentos", s1.pedidas(), 3);
+  s1.srv.close();
+
+  /* 503 que no cede: se rinde, pero diciendo qué pasó y cuántas veces. */
+  var s2 = await servidor([{codigo:503}]);
+  var err2 = await C.pedir(s2.url, "pronóstico").then(function(){ return null; },
+                           function(e){ return e; });
+  chequear("un 503 que no cede se rinde", err2 !== null, true);
+  chequear("con el código a la vista", err2.status, 503);
+  chequear("y cuántas veces se intentó", err2.intentos, 3);
+  chequear("y con la URL para poder abrirla", err2.url, s2.url);
+  s2.srv.close();
+
+  /* Un 400 no se reintenta: la consulta está mal y repetirla da lo mismo. */
+  var s3 = await servidor([{codigo:400}]);
+  var err3 = await C.pedir(s3.url, "pronóstico").then(function(){ return null; },
+                           function(e){ return e; });
+  chequear("un 400 no se reintenta", s3.pedidas(), 1);
+  chequear("y lo dice", err3.status, 400);
+  s3.srv.close();
+
+  /* Y el caso distinto: la petición no llegó a salir. Un cortafuegos que
+     corta la conexión no es lo mismo que un servicio caído, y el mensaje de
+     la app tiene que poder separarlos. */
+  var err4 = await C.pedir("http://127.0.0.1:1/", "pronóstico").then(function(){ return null; },
+                           function(e){ return e; });
+  chequear("sin salida a internet se marca como problema de red", err4.red, true);
+  chequear("y no trae código HTTP, porque no lo hubo", err4.status, undefined);
+
+  console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
+  process.exit(fallas === 0 ? 0 : 1);
+})();
+
+/* El resumen y el process.exit viven DENTRO del async de arriba: las
+   comprobaciones de red terminan después que el resto del archivo, y un
+   process.exit acá mataba el proceso antes de que corrieran —el archivo
+   decía «TODO OK» sin haberlas ejecutado. */

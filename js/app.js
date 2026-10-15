@@ -1405,8 +1405,31 @@
         {day:"2-digit", month:"short", hour:"2-digit", minute:"2-digit"});
       renderClima();
     }).catch(function(err){
-      avisoClima("No se pudo consultar el pronóstico: " + esc(err.message) +
-        " Si el terminal bloquea salidas a internet, esta vista no va a funcionar desde la red interna.", "error");
+      /* Decir cuál de los tres problemas es. Antes el mensaje culpaba a la
+         red del terminal pasara lo que pasara, y un 503 de Open-Meteo
+         —que se arregla solo— mandaba a hablar con informática. */
+      var txt, clase = "error";
+      if(err && err.red){
+        txt = "No se pudo salir a internet para consultar el pronóstico. " +
+          "Si el terminal bloquea las salidas, esta vista no va a funcionar desde la red interna.";
+      }else if(err && err.status === 429){
+        txt = "Open-Meteo está limitando las consultas (HTTP 429). Se reintentó " +
+          (err.intentos || 1) + " veces. Espera un minuto y vuelve a consultar.";
+        clase = "warn";
+      }else if(err && err.status >= 500){
+        txt = "Open-Meteo no está respondiendo (HTTP " + err.status + "). Se reintentó " +
+          (err.intentos || 1) + " veces. Es del lado de ellos y suele durar poco: " +
+          "vuelve a consultar en unos minutos.";
+        clase = "warn";
+      }else{
+        txt = "No se pudo consultar el pronóstico: " + esc(err && err.message || "error desconocido");
+      }
+      /* La URL, para poder abrirla en otra pestaña y ver qué contesta: es la
+         diferencia entre diagnosticar esto en un minuto o a ciegas. */
+      if(err && err.url){
+        txt += ' <a href="' + esc(err.url) + '" target="_blank" rel="noopener">Abrir la consulta</a>';
+      }
+      avisoClima(txt, clase);
       $("clima-consulta").textContent = "sin conexión";
     });
   }

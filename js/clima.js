@@ -234,11 +234,51 @@
 
   /* ──────────────────────────── red ────────────────────────────── */
 
+  /* Esperas entre reintentos. Dos, cortas: un 503 de Open-Meteo suele durar
+     segundos, y encadenar más intentos solo alarga la espera del usuario
+     delante de una pantalla en blanco. */
+  var ESPERAS = [800, 2500];
+
+  /**
+   * Pide una URL y reintenta si el servidor contesta 5xx o 429.
+   *
+   * Un 503 es el servicio caído un momento o soltando carga, y un 429 es el
+   * límite de consultas: los dos se arreglan esperando, y antes obligaban a
+   * la persona a apretar «Consultar» otra vez sin saber que eso bastaba.
+   * Un 4xx que no sea 429 no se reintenta: la consulta está mal y repetirla
+   * da el mismo resultado.
+   */
+  function pedir(url, que, intento){
+    intento = intento || 0;
+    return fetch(url).then(function(res){
+      if(res.ok) return res.json();
+      var reintentable = res.status === 429 || res.status >= 500;
+      if(reintentable && intento < ESPERAS.length){
+        return new Promise(function(ok){ setTimeout(ok, ESPERAS[intento]); })
+          .then(function(){ return pedir(url, que, intento + 1); });
+      }
+      var e = new Error("No se pudo obtener el " + que + " (HTTP " + res.status + ").");
+      e.status = res.status;
+      e.url = url;
+      e.intentos = intento + 1;
+      throw e;
+    }, function(err){
+      /* fetch() rechaza sin status cuando la petición no llegó a salir: DNS,
+         certificado, o un cortafuegos que corta la conexión. Eso es otra
+         cosa que un 503 y hay que poder distinguirlo en pantalla. */
+      var e = new Error("No se pudo salir a internet para pedir el " + que + ".");
+      e.red = true;
+      e.url = url;
+      e.causa = err && err.message;
+      throw e;
+    });
+  }
+
   function consultar(p, dias){
     var puerto = p || PUERTO;
     return Promise.all([
-      fetch(urlPronostico(puerto, dias)).then(exigirOk("pronóstico")),
-      fetch(urlMarino(puerto, dias)).then(exigirOk("datos marinos")).catch(function(){ return null; })
+      pedir(urlPronostico(puerto, dias), "pronóstico"),
+      pedir(urlMarino(puerto, dias), "datos marinos").catch(function(){ return null; })
     ]).then(function(r){
       var serie = combinar(r[0], r[1]);
       if(!serie.length) throw new Error("La respuesta no trae horas de pronóstico.");
@@ -261,7 +301,7 @@
   var api = {
     ESTADOS: ESTADOS, estadoPuerto: estadoPuerto,
     PUERTO: PUERTO, UMBRALES: UMBRALES,
-    urlPronostico: urlPronostico, urlMarino: urlMarino,
+    urlPronostico: urlPronostico, urlMarino: urlMarino, pedir: pedir,
     combinar: combinar, evaluar: evaluar, ventanas: ventanas,
     ventanaOperativa: ventanaOperativa, rumbo: rumbo, consultar: consultar
   };
