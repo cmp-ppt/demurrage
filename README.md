@@ -89,6 +89,33 @@ Los umbrales por defecto salen de la operación de PPT y se editan en pantalla:
 | Marejada (altura significativa) | 2,0 m | 2,5 m |
 | Visibilidad | 2.000 m | 1.000 m |
 
+### El aviso por correo
+
+Aparte del panel, un trabajo de GitHub Actions revisa el pronóstico cada hora y manda
+correo cuando **sale de rango**, con una regla distinta y a propósito más baja:
+
+| | regla del correo |
+|---|---|
+| Viento **sostenido** | **18 kn o más** |
+| Durante | al menos **1 hora seguida** |
+| Ráfagas | **no disparan el aviso** |
+| Marejada / visibilidad | 2,0 m / 2.000 m, con la misma exigencia de horas |
+
+Los 18 kn son menos que los 20 del tablero porque son otra cosa: 20 es el **límite de
+operación** —a esa velocidad el embarque se detiene y queda escrito en el RTE— y el
+correo avisa **antes**, cuando todavía se puede apurar el cierre de bodega o llamar a
+la agencia. No son dos definiciones del mismo umbral que se contradicen: son el límite
+y su antesala.
+
+La ráfaga queda fuera por pedido de la operación: es un pico de segundos, y un aviso
+que salta con cada pico se vuelve ruido que nadie mira —y entonces el que importa
+tampoco se mira—. Se informa en el cuerpo del correo cuando ya hay aviso por viento
+sostenido, para saber a qué atenerse, pero nunca es la causa.
+
+Se manda **al cruzar**, no mientras dure: uno al salir de rango y otro al volver. El
+umbral vive en `js/alerta.js`; `horasSeguidas: 2` exigiría dos horas seguidas y
+descartaría la hora suelta.
+
 El panel **no reemplaza a Windy**: hay un enlace directo al punto del terminal para
 mirar el mapa. Lo que agrega es el umbral aplicado y la alerta escrita, que es lo que
 después se pega en un correo o se cita en un time sheet.

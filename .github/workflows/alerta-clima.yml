@@ -1,5 +1,9 @@
-# Aviso por correo cuando el pronóstico cruza el umbral de operación del
-# terminal. Los umbrales son los de js/clima.js, los mismos del tablero.
+# Aviso por correo cuando el pronóstico sale de rango: viento SOSTENIDO de
+# 18 kn o más durante al menos una hora seguida. La ráfaga no dispara nada.
+#
+# Los 18 kn son menos que los 20 del tablero a propósito: 20 es el límite de
+# operación, donde el embarque ya se detuvo. El correo avisa antes, cuando
+# todavía queda margen de decisión. El umbral del aviso vive en js/alerta.js.
 #
 # Qué hay que configurar una vez, en Settings → Secrets and variables →
 # Actions del repositorio:

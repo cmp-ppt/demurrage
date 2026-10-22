@@ -3,10 +3,9 @@
  *
  * Nada de red: acá se prueba lo que decide si se manda el correo y qué dice,
  * que es donde un error se traduce en cuarenta correos iguales o, peor, en
- * ninguno la noche que el puerto cerró.
+ * ninguno la noche que el viento se puso sobre el umbral.
  */
 var A = require("../js/alerta.js");
-var C = require("../js/clima.js");
 
 var fallas = 0, total = 0;
 function chequear(nombre, obtenido, esperado, tol){
@@ -20,7 +19,7 @@ function chequear(nombre, obtenido, esperado, tol){
 }
 function bloque(t){ console.log("\n" + t); }
 
-/* Una serie horaria como la que arma CLIMA.combinar. */
+/* Una serie horaria como la que arma CLIMA.combinar: una muestra por hora. */
 var BASE = new Date(2026, 9, 14, 12, 0);
 function serie(horas){
   return horas.map(function(h, i){
@@ -33,87 +32,141 @@ function serie(horas){
             direccion: 220, periodo: 11};
   });
 }
+function ventana(s, opciones){
+  opciones = opciones || {};
+  opciones.ahora = BASE;
+  return A.peorEnVentana(s, opciones);
+}
 
 /* ---------------------------------------------------------------- */
-bloque("El peor nivel de la ventana");
-/* Se queda con el peor y no con el primero: si en 24 h hay una hora con
-   restricción y otra de cierre, lo que hay que comunicar es el cierre. */
-var mixta = A.peorEnVentana(serie([{}, {v:21}, {}, {v:26}, {}]), {ahora: BASE});
-chequear("manda el peor, no el primero", mixta.nivel, "alerta");
-chequear("y dice desde cuándo", mixta.desdeIso.slice(-5), "15:00");
-chequear("cuenta las horas fuera de rango", mixta.horasFuera, 2);
-chequear("todo bajo umbral es ok", A.peorEnVentana(serie([{}, {}, {}]), {ahora: BASE}).nivel, "ok");
-chequear("sin horas fuera, cero", A.peorEnVentana(serie([{}, {}]), {ahora: BASE}).horasFuera, 0);
-/* Viento de 20 kn detiene el embarque pero la nave sigue amarrada: eso es
-   restricción, no cierre. Es el umbral que rige en el terminal. */
-chequear("20 nudos es restricción", A.peorEnVentana(serie([{v:20}]), {ahora: BASE}).nivel, "aviso");
-chequear("25 nudos es cierre", A.peorEnVentana(serie([{v:25}]), {ahora: BASE}).nivel, "alerta");
-chequear("marejada de 2,5 m también", A.peorEnVentana(serie([{o:2.5}]), {ahora: BASE}).nivel, "alerta");
-chequear("y la ráfaga de 30 kn", A.peorEnVentana(serie([{r:30}]), {ahora: BASE}).nivel, "alerta");
-/* Lo que cae fuera de la ventana no se mira: un cierre dentro de tres días
-   no es motivo para despertar a nadie hoy. */
-/* Doce horas en calma y después viento: con ventana de 6 h no se ve. */
+bloque("El umbral es el viento SOSTENIDO");
+/* 18 nudos sostenidos, no 20: 20 es el límite de operación del terminal y a
+   esa altura el embarque ya se detuvo. El aviso llega antes, cuando todavía
+   se puede decidir algo. */
+chequear("17 kn no dispara", ventana(serie([{v:17}, {v:17}])).fuera, false);
+chequear("18 kn sí", ventana(serie([{v:18}])).fuera, true);
+chequear("y 19 también", ventana(serie([{v:19}])).fuera, true);
+
+bloque("La ráfaga NO dispara");
+/* Es lo que se pidió: una ráfaga es un pico de segundos, y un aviso que
+   salta con cada pico se vuelve ruido que nadie mira —y entonces el aviso
+   que importa tampoco se mira. */
+chequear("ráfaga de 35 kn con viento de 10 no dispara nada",
+  ventana(serie([{v:10, r:35}, {v:10, r:38}])).fuera, false);
+chequear("ni una de 50", ventana(serie([{v:9, r:50}])).fuera, false);
+/* Pero la ráfaga se informa cuando ya hay aviso por viento sostenido: quien
+   lee el correo necesita saber a qué atenerse. */
+var conRafaga = ventana(serie([{v:21, r:34}, {v:22, r:36}]));
+chequear("cuando hay aviso, la ráfaga máxima viaja en el dato", conRafaga.maxRafaga, 36);
+chequear("y el sostenido máximo también", conRafaga.maxViento, 22);
+chequear("el motivo dice «sostenido»",
+  /viento sostenido 22 kn/.test(conRafaga.motivos.join(" ")), true);
+
+bloque("Sostenido quiere decir seguido");
+/* Una muestra del pronóstico ES una hora, así que con horasSeguidas=1 basta
+   una hora completa sobre el umbral, que es lo pedido. */
+chequear("una hora sobre el umbral basta",
+  ventana(serie([{}, {v:19}, {}])).horasSeguidas, 1);
+/* Subiendo la exigencia, la hora suelta se descarta y el tramo largo no. */
+var dos = {umbral: {vientoSostenido:18, horasSeguidas:2, ola:2.0, visibilidad:2000}};
+chequear("con dos horas exigidas, una suelta no alcanza",
+  ventana(serie([{}, {v:19}, {}]), dos).fuera, false);
+chequear("dos seguidas sí", ventana(serie([{}, {v:19}, {v:19}, {}]), dos).fuera, true);
+/* Y el corte es de verdad: dos horas separadas por una tranquila no son un
+   tramo de dos. */
+chequear("dos horas separadas no son un tramo seguido",
+  ventana(serie([{v:19}, {}, {v:19}]), dos).fuera, false);
+chequear("se cuentan los tramos por separado",
+  ventana(serie([{v:19}, {}, {v:19}])).tramos, 2);
+chequear("y las horas fuera de rango se suman",
+  ventana(serie([{v:19}, {}, {v:19}])).horasFuera, 2);
+
+bloque("Cuándo empieza");
+/* Lo que se comunica es cuándo empieza, no cuándo es peor: es lo que da o
+   quita margen para decidir. */
+var tarde = ventana(serie([{}, {}, {v:19}, {v:27}, {v:19}]));
+chequear("manda el primer tramo, no el más fuerte", tarde.desdeIso.slice(-5), "14:00");
+chequear("y dice cuántas horas seguidas dura", tarde.horasSeguidas, 3);
+chequear("con el máximo del tramo", tarde.maxViento, 27);
+
+bloque("Marejada y visibilidad");
+/* Cierran el puerto igual que el viento y siguen avisando, con la misma
+   exigencia de horas seguidas. */
+chequear("2,0 m de marejada avisan", ventana(serie([{o:2.0}])).fuera, true);
+chequear("1,9 m no", ventana(serie([{o:1.9}])).fuera, false);
+chequear("la visibilidad baja también", ventana(serie([{vis:1500}])).fuera, true);
+/* Y se pueden apagar sin tocar el código del aviso. */
+var soloViento = {umbral: {vientoSostenido:18, horasSeguidas:1, ola:null, visibilidad:null}};
+chequear("apagando la marejada, deja de avisar",
+  ventana(serie([{o:3.0}]), soloViento).fuera, false);
+chequear("y el viento sigue avisando igual",
+  ventana(serie([{v:19}]), soloViento).fuera, true);
+
+bloque("Lo que cae fuera de la ventana");
 var lejos = serie(Array(12).fill({}).concat(Array(40).fill({v:30})));
-chequear("lo de pasado mañana no entra", A.peorEnVentana(lejos, {ahora: BASE, horas: 6}).nivel, "ok");
-chequear("con la ventana larga sí", A.peorEnVentana(lejos, {ahora: BASE, horas: 48}).nivel, "alerta");
-chequear("una serie vacía no revienta", A.peorEnVentana([], {ahora: BASE}).nivel, "ok");
-chequear("sin serie tampoco", A.peorEnVentana(null, {ahora: BASE}).nivel, "ok");
+chequear("lo de pasado mañana no entra", ventana(lejos, {horas: 6}).fuera, false);
+chequear("con la ventana larga sí", ventana(lejos, {horas: 48}).fuera, true);
+chequear("una serie vacía no revienta", ventana([]).fuera, false);
+chequear("sin serie tampoco", ventana(null).fuera, false);
 
 /* ---------------------------------------------------------------- */
 bloque("Cuándo se manda el correo");
-/* La regla: al cruzar, no mientras dure. Un correo por revisión con viento
-   sobre 20 nudos durante dos días son cuarenta correos iguales. */
-chequear("de operable a restringido, se avisa", A.cruce({nivel:"ok"}, {nivel:"aviso"}).avisar, true);
-chequear("y se dice que entró", A.cruce({nivel:"ok"}, {nivel:"aviso"}).tipo, "entra");
-chequear("mientras siga igual, no se insiste", A.cruce({nivel:"aviso"}, {nivel:"aviso"}).avisar, false);
-chequear("de restricción a cierre, se avisa", A.cruce({nivel:"aviso"}, {nivel:"alerta"}).avisar, true);
-chequear("y se dice que empeoró", A.cruce({nivel:"aviso"}, {nivel:"alerta"}).tipo, "empeora");
-chequear("al aflojar también", A.cruce({nivel:"alerta"}, {nivel:"aviso"}).tipo, "mejora");
-chequear("y al volver a operable", A.cruce({nivel:"alerta"}, {nivel:"ok"}).tipo, "vuelve");
-chequear("volver también se avisa", A.cruce({nivel:"alerta"}, {nivel:"ok"}).avisar, true);
-/* Primera corrida, o estado perdido: avisar solo si está fuera de rango.
-   Arrancar con un «todo en orden» que nadie pidió enseña a ignorar el
-   remitente, y el primer aviso de verdad se pierde entre los demás. */
+/* Al cruzar, no mientras dure: con viento sobre el umbral durante dos días
+   son cuarenta correos iguales y a los tres primeros nadie los abre. */
+chequear("de dentro a fuera de rango, se avisa",
+  A.cruce({nivel:"ok"}, {nivel:"fuera"}).avisar, true);
+chequear("y se dice que entró", A.cruce({nivel:"ok"}, {nivel:"fuera"}).tipo, "entra");
+chequear("mientras siga fuera, no se insiste",
+  A.cruce({nivel:"fuera"}, {nivel:"fuera"}).avisar, false);
+chequear("al volver se avisa", A.cruce({nivel:"fuera"}, {nivel:"ok"}).avisar, true);
+chequear("y se dice que volvió", A.cruce({nivel:"fuera"}, {nivel:"ok"}).tipo, "vuelve");
+chequear("dentro de rango y sigue dentro, nada",
+  A.cruce({nivel:"ok"}, {nivel:"ok"}).avisar, false);
+/* Primera corrida, o estado perdido: avisar solo si está fuera de rango. */
 chequear("sin estado previo y todo en orden, no se manda nada",
   A.cruce(null, {nivel:"ok"}).avisar, false);
 chequear("sin estado previo y fuera de rango, se manda",
-  A.cruce(null, {nivel:"alerta"}).avisar, true);
+  A.cruce(null, {nivel:"fuera"}).avisar, true);
 chequear("un estado guardado con basura se trata como ausente",
   A.cruce({nivel:"loquesea"}, {nivel:"ok"}).avisar, false);
 
 /* ---------------------------------------------------------------- */
 bloque("Qué dice el correo");
-var fuera = A.peorEnVentana(serie([{}, {v:26, r:31}]), {ahora: BASE});
+var fuera = ventana(serie([{}, {v:21, r:34}, {v:23, r:37}]));
 var m = A.mensaje(A.cruce({nivel:"ok"}, fuera), fuera, {puerto:"Puerto Punta Totoralillo"});
-chequear("el asunto lleva el estado", m.asunto.indexOf("Puerto cerrado") > 0, true);
-chequear("y el motivo, que es lo que se lee en el teléfono",
-  m.asunto.indexOf("viento 26 kn") > 0, true);
+chequear("el asunto habla de viento sobre umbral",
+  /Viento sobre umbral/.test(m.asunto), true);
+chequear("y lleva el motivo, que es lo que se lee en el teléfono",
+  m.asunto.indexOf("viento sostenido") > 0, true);
 chequear("el cuerpo nombra el terminal",
   m.texto.indexOf("Puerto Punta Totoralillo") > 0, true);
-chequear("dice desde cuándo", /Desde: .+13:00/.test(m.texto), true);
-chequear("cuántas horas fuera de rango", /Horas fuera de rango/.test(m.texto), true);
-/* De dónde sale el dato: un aviso automático sin procedencia no se puede
-   contrastar ni discutir con nadie. */
+chequear("dice desde cuándo y cuántas horas", /Desde: .+13:00 · 2 horas seguidas/.test(m.texto), true);
+chequear("da el máximo sostenido", /Máximo sostenido en el tramo: 23 kn/.test(m.texto), true);
+/* La ráfaga aparece, pero dicha como lo que es: información, no la causa. */
+chequear("la ráfaga se informa sin ser la causa",
+  /ráfagas de hasta 37 kn, que no disparan el aviso/.test(m.texto), true);
+chequear("la regla queda escrita en el correo",
+  /viento sostenido de 18 kn o más durante 1 hora seguida/.test(m.texto), true);
+chequear("y que las ráfagas no cuentan",
+  /Las ráfagas no disparan el aviso/.test(m.texto), true);
+chequear("dice por qué 18 y no 20",
+  /límite de operación del terminal son 20 kn/.test(m.texto), true);
 chequear("y de dónde sale el pronóstico", m.texto.indexOf("Open-Meteo") > 0, true);
-chequear("deja dicho que avisa al cruzar",
-  /al cruzar el umbral/.test(m.texto), true);
-var vuelta = A.mensaje(A.cruce({nivel:"alerta"}, {nivel:"ok"}), {nivel:"ok", motivos:[]}, {});
-chequear("el de vuelta a operable es otro asunto",
-  /operable otra vez/.test(vuelta.asunto), true);
+var vuelta = A.mensaje(A.cruce({nivel:"fuera"}, {nivel:"ok"}), {nivel:"ok", motivos:[]}, {});
+chequear("el de vuelta es otro asunto", /dentro de rango otra vez/.test(vuelta.asunto), true);
 chequear("y no inventa motivos", vuelta.texto.indexOf("Motivo:"), -1);
 
 bloque("La fecha, como se lee");
 chequear("día y hora del terminal", A.cuando("2026-10-14T18:00"), "mié 14 oct, 18:00");
 chequear("basura no inventa fecha", A.cuando("x"), "");
-chequear("sin nada tampoco", A.cuando(), "");
 
 bloque("Lo que se guarda entre corridas");
 var g = A.estadoAGuardar(fuera, Date.parse("2026-10-14T12:00:00Z"));
-chequear("el nivel", g.nivel, "alerta");
+chequear("el nivel", g.nivel, "fuera");
 chequear("y cuándo se revisó", g.revisadoEn, "2026-10-14T12:00:00.000Z");
-chequear("sin nada, queda operable", A.estadoAGuardar(null).nivel, "ok");
-/* El ciclo completo: lo guardado tiene que servir de «anterior». */
-chequear("lo guardado sirve de anterior", A.cruce(g, {nivel:"alerta"}).avisar, false);
+chequear("sin nada, queda dentro de rango", A.estadoAGuardar(null).nivel, "ok");
+chequear("lo guardado sirve de anterior", A.cruce(g, {nivel:"fuera"}).avisar, false);
+chequear("y detecta la vuelta", A.cruce(g, {nivel:"ok"}).avisar, true);
 
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);
