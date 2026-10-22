@@ -19,9 +19,14 @@
  * puerto con 20/25 y el correo avisa en 18: no son dos definiciones de lo
  * mismo que se contradicen, son el límite y su antesala.
  *
- * La marejada y la visibilidad siguen disparando aviso porque cierran el
- * puerto igual que el viento, y con la misma exigencia de una hora seguida.
- * Si algún día sobran, se apagan poniendo su umbral en null.
+ * La marejada y la visibilidad NO disparan: van como dato. Se informan en el
+ * correo —y se marcan cuando pasan del umbral del puerto— para que quien lo
+ * lea sepa con qué mar se junta el viento, pero no mandan un correo por su
+ * cuenta. Es decisión de la operación: el aviso es de viento.
+ *
+ * Tiene una consecuencia que conviene tener presente: una marejada de 3 m
+ * con viento calmo no genera correo. El tablero sí la pinta como puerto
+ * cerrado; el correo calla.
  *
  * ── Y se avisa al CRUZAR, no mientras dure ──
  *
@@ -52,37 +57,30 @@
    */
   var UMBRAL = {
     vientoSostenido: 18,    // nudos a 10 m, media horaria — NO la ráfaga
-    horasSeguidas: 1,
-    ola: 2.0,               // m de altura significativa; null para apagarlo
-    visibilidad: 2000       // m; null para apagarlo
+    horasSeguidas: 1
   };
+
+  /* Para marcar en el correo la marejada y la visibilidad cuando pasan del
+     umbral de operación. No disparan nada: deciden si la cifra va dicha a
+     secas o con un «sobre el umbral» al lado. Salen de los umbrales del
+     tablero para no inventar un segundo juego de números. */
+  function umbralesPuerto(){
+    var u = (CLIMA && CLIMA.UMBRALES) || {};
+    return {ola: u.olaAviso, visibilidad: u.visibilidadAviso};
+  }
 
   function redondear(v){ return Math.round(v * 10) / 10; }
 
   /**
-   * ¿Esta hora está fuera de rango, y por qué?
+   * ¿Esta hora está fuera de rango?
    *
-   * La ráfaga se lee pero no decide: viaja en el motivo para que quien lea
-   * el correo sepa a qué atenerse, sin ser nunca la razón del aviso.
+   * Solo el viento sostenido decide. La ráfaga, la marejada y la visibilidad
+   * se leen y se informan, pero ninguna manda un correo por su cuenta.
    */
   function evaluarHora(p, umbral){
     umbral = umbral || UMBRAL;
-    var motivos = [], fuera = false;
-    if(umbral.vientoSostenido != null && p.viento != null &&
-       p.viento >= umbral.vientoSostenido){
-      fuera = true;
-      motivos.push("viento sostenido " + redondear(p.viento) + " kn");
-    }
-    if(umbral.ola != null && p.ola != null && p.ola >= umbral.ola){
-      fuera = true;
-      motivos.push("marejada " + p.ola.toFixed(1) + " m");
-    }
-    if(umbral.visibilidad != null && p.visibilidad != null &&
-       p.visibilidad <= umbral.visibilidad){
-      fuera = true;
-      motivos.push("visibilidad " + Math.round(p.visibilidad) + " m");
-    }
-    return {fuera: fuera, motivos: motivos};
+    return {fuera: umbral.vientoSostenido != null && p.viento != null &&
+                   p.viento >= umbral.vientoSostenido};
   }
 
   /**
@@ -108,7 +106,7 @@
       if(!actual){
         actual = {desdeIso: p.iso, hastaIso: p.iso, horas: 0,
                   maxViento: 0, maxRafaga: 0, maxOla: 0, minVis: null,
-                  causas: {}, motivos: []};
+                  motivos: []};
         out.push(actual);
       }
       actual.hastaIso = p.iso;
@@ -119,16 +117,13 @@
       if(p.visibilidad != null && (actual.minVis === null || p.visibilidad < actual.minVis)){
         actual.minVis = p.visibilidad;
       }
-      /* Qué causas dispararon; la cifra se pone al final, con el extremo del
-         tramo. Tomarla de la primera hora dejaba el asunto diciendo 21 kn y
-         el cuerpo 22: la misma condición contada de dos maneras. */
-      e.motivos.forEach(function(m){ actual.causas[m.split(" ")[0]] = true; });
     });
 
+    /* El motivo se arma al final con el extremo del tramo. Tomarlo de la
+       primera hora dejaba el asunto diciendo 21 kn y el cuerpo 22: la misma
+       condición contada de dos maneras. */
     return out.filter(function(r){ return r.horas >= minimo; }).map(function(r){
-      if(r.causas.viento) r.motivos.push("viento sostenido " + redondear(r.maxViento) + " kn");
-      if(r.causas.marejada) r.motivos.push("marejada " + r.maxOla.toFixed(1).replace(".", ",") + " m");
-      if(r.causas.visibilidad) r.motivos.push("visibilidad " + Math.round(r.minVis) + " m");
+      r.motivos = ["viento sostenido " + redondear(r.maxViento) + " kn"];
       delete r.causas;
       return r;
     });
@@ -152,6 +147,10 @@
       horasSeguidas: primera ? primera.horas : 0,
       maxViento: primera ? primera.maxViento : 0,
       maxRafaga: primera ? primera.maxRafaga : 0,
+      /* Como dato para el correo: no disparan, pero cambian lo que se
+         decide con el aviso en la mano. */
+      maxOla: primera ? primera.maxOla : 0,
+      minVis: primera ? primera.minVis : null,
       horasFuera: rs.reduce(function(a, r){ return a + r.horas; }, 0),
       tramos: rs.length
     };
@@ -219,6 +218,21 @@
           (actual.maxRafaga ? " (ráfagas de hasta " + redondear(actual.maxRafaga) +
             " kn, que no disparan el aviso)" : "") + ".");
       }
+      /* La mar y la visibilidad del tramo, como dato. No disparan el aviso
+         —el aviso es de viento— pero cambian lo que se decide: no es lo
+         mismo 21 nudos con mar llana que con 2,5 m de marejada. */
+      var up = umbralesPuerto();
+      var ctx = [];
+      if(actual && actual.maxOla){
+        ctx.push("marejada hasta " + actual.maxOla.toFixed(1).replace(".", ",") + " m" +
+          (up.ola != null && actual.maxOla >= up.ola ? " (sobre el umbral del puerto)" : ""));
+      }
+      if(actual && actual.minVis != null){
+        ctx.push("visibilidad mínima " + Math.round(actual.minVis) + " m" +
+          (up.visibilidad != null && actual.minVis <= up.visibilidad
+            ? " (bajo el umbral del puerto)" : ""));
+      }
+      if(ctx.length) lineas.push("En el tramo: " + ctx.join(" · ") + ".");
       if(actual && actual.horasFuera > (actual.horasSeguidas || 0)){
         lineas.push("Horas fuera de rango en las próximas " +
           (opciones.horas || HORAS) + ": " + actual.horasFuera +
@@ -231,10 +245,7 @@
     lineas.push("Regla: viento sostenido de " + umbral.vientoSostenido + " kn o más durante " +
       (umbral.horasSeguidas || 1) +
       ((umbral.horasSeguidas || 1) === 1 ? " hora seguida" : " horas seguidas") +
-      ". Las ráfagas no disparan el aviso." +
-      (umbral.ola != null ? " También avisa con marejada de " + umbral.ola.toFixed(1).replace(".", ",") +
-        " m o más" + (umbral.visibilidad != null ? " y visibilidad bajo " +
-        umbral.visibilidad + " m" : "") + ", con la misma exigencia de horas." : ""));
+      ". Las ráfagas, la marejada y la visibilidad NO disparan el aviso: se informan.");
     lineas.push("Pronóstico de Open-Meteo para el sitio de atraque. El límite de operación " +
       "del terminal son 20 kn: este aviso llega antes, para que quede margen de decisión.");
     lineas.push("Se manda al cruzar el umbral, no mientras dure la condición.");

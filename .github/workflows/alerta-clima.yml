@@ -1,5 +1,6 @@
 # Aviso por correo cuando el pronóstico sale de rango: viento SOSTENIDO de
-# 18 kn o más durante al menos una hora seguida. La ráfaga no dispara nada.
+# 18 kn o más durante al menos una hora seguida. Ni la ráfaga, ni la marejada,
+# ni la visibilidad disparan nada: van como dato en el cuerpo del correo.
 #
 # Los 18 kn son menos que los 20 del tablero a propósito: 20 es el límite de
 # operación, donde el embarque ya se detuvo. El correo avisa antes, cuando

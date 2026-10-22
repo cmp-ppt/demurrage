@@ -99,7 +99,7 @@ correo cuando **sale de rango**, con una regla distinta y a propósito más baja
 | Viento **sostenido** | **18 kn o más** |
 | Durante | al menos **1 hora seguida** |
 | Ráfagas | **no disparan el aviso** |
-| Marejada / visibilidad | 2,0 m / 2.000 m, con la misma exigencia de horas |
+| Marejada y visibilidad | **no disparan**: van como dato en el cuerpo |
 
 Los 18 kn son menos que los 20 del tablero porque son otra cosa: 20 es el **límite de
 operación** —a esa velocidad el embarque se detiene y queda escrito en el RTE— y el
@@ -109,11 +109,17 @@ y su antesala.
 
 La ráfaga queda fuera por pedido de la operación: es un pico de segundos, y un aviso
 que salta con cada pico se vuelve ruido que nadie mira —y entonces el que importa
-tampoco se mira—. Se informa en el cuerpo del correo cuando ya hay aviso por viento
-sostenido, para saber a qué atenerse, pero nunca es la causa.
+tampoco se mira—. La marejada y la visibilidad tampoco disparan, por la misma razón:
+**el aviso es de viento**. Las tres se informan en el cuerpo del correo cuando ya hay
+aviso —«marejada hasta 2,6 m (sobre el umbral del puerto)»— porque no es lo mismo
+21 nudos con mar llana que con 2,6 m, pero ninguna es nunca la causa.
+
+Tiene una consecuencia que conviene tener presente: **una marejada de 3 m con viento
+calmo no genera correo.** El tablero sí la pinta como puerto cerrado; el correo calla.
 
 Se manda **al cruzar**, no mientras dure: uno al salir de rango y otro al volver. El
-umbral vive en `js/alerta.js`; `horasSeguidas: 2` exigiría dos horas seguidas y
+umbral vive en `js/alerta.js` y son dos números: `vientoSostenido: 18` y
+`horasSeguidas: 1`. Con `horasSeguidas: 2` se exigirían dos horas seguidas y se
 descartaría la hora suelta.
 
 El panel **no reemplaza a Windy**: hay un enlace directo al punto del terminal para

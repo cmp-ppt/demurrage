@@ -89,18 +89,22 @@ chequear("manda el primer tramo, no el más fuerte", tarde.desdeIso.slice(-5), "
 chequear("y dice cuántas horas seguidas dura", tarde.horasSeguidas, 3);
 chequear("con el máximo del tramo", tarde.maxViento, 27);
 
-bloque("Marejada y visibilidad");
-/* Cierran el puerto igual que el viento y siguen avisando, con la misma
-   exigencia de horas seguidas. */
-chequear("2,0 m de marejada avisan", ventana(serie([{o:2.0}])).fuera, true);
-chequear("1,9 m no", ventana(serie([{o:1.9}])).fuera, false);
-chequear("la visibilidad baja también", ventana(serie([{vis:1500}])).fuera, true);
-/* Y se pueden apagar sin tocar el código del aviso. */
-var soloViento = {umbral: {vientoSostenido:18, horasSeguidas:1, ola:null, visibilidad:null}};
-chequear("apagando la marejada, deja de avisar",
-  ventana(serie([{o:3.0}]), soloViento).fuera, false);
-chequear("y el viento sigue avisando igual",
-  ventana(serie([{v:19}]), soloViento).fuera, true);
+bloque("Marejada y visibilidad: dato, no gatillo");
+/* Decisión de la operación: el aviso es de viento. Una marejada de 3 m con
+   viento calmo no manda correo —el tablero sí la pinta como puerto cerrado,
+   el correo calla— y eso es a propósito. */
+chequear("3 m de marejada con viento calmo no avisan",
+  ventana(serie([{o:3.0}, {o:3.2}])).fuera, false);
+chequear("2,5 m tampoco", ventana(serie([{o:2.5}])).fuera, false);
+chequear("ni la visibilidad en el suelo", ventana(serie([{vis:300}])).fuera, false);
+chequear("el viento sigue siendo el único que dispara",
+  ventana(serie([{v:19, o:0.5, vis:30000}])).fuera, true);
+/* Pero se recogen, porque el correo las informa. */
+var conMar = ventana(serie([{v:21, o:2.4, vis:1800}, {v:22, o:2.6, vis:900}]));
+chequear("la marejada máxima del tramo se guarda", conMar.maxOla, 2.6);
+chequear("y la visibilidad mínima", conMar.minVis, 900);
+chequear("el motivo sigue siendo solo el viento",
+  conMar.motivos.join(" · "), "viento sostenido 22 kn");
 
 bloque("Lo que cae fuera de la ventana");
 var lejos = serie(Array(12).fill({}).concat(Array(40).fill({v:30})));
@@ -147,8 +151,25 @@ chequear("la ráfaga se informa sin ser la causa",
   /ráfagas de hasta 37 kn, que no disparan el aviso/.test(m.texto), true);
 chequear("la regla queda escrita en el correo",
   /viento sostenido de 18 kn o más durante 1 hora seguida/.test(m.texto), true);
-chequear("y que las ráfagas no cuentan",
-  /Las ráfagas no disparan el aviso/.test(m.texto), true);
+chequear("y que ráfaga, marejada y visibilidad no cuentan",
+  /ráfagas, la marejada y la visibilidad NO disparan el aviso: se informan/.test(m.texto), true);
+
+/* La mar y la visibilidad van en el cuerpo: no es lo mismo 21 nudos con mar
+   llana que con 2,5 m de marejada, y eso cambia lo que se decide. */
+var conDatos = ventana(serie([{}, {v:21, o:2.4, vis:1800}, {v:23, o:2.6, vis:900}]));
+var m2 = A.mensaje(A.cruce({nivel:"ok"}, conDatos), conDatos, {});
+chequear("el cuerpo informa la marejada del tramo",
+  /En el tramo: marejada hasta 2,6 m/.test(m2.texto), true);
+chequear("y la marca cuando pasa el umbral del puerto",
+  /2,6 m \(sobre el umbral del puerto\)/.test(m2.texto), true);
+chequear("con la visibilidad mínima",
+  /visibilidad mínima 900 m \(bajo el umbral del puerto\)/.test(m2.texto), true);
+/* Con mar tranquila se informa igual, pero sin la marca. */
+var mansa = ventana(serie([{v:21, o:0.8, vis:30000}]));
+var m3 = A.mensaje(A.cruce({nivel:"ok"}, mansa), mansa, {});
+chequear("con mar llana se informa sin marcarla",
+  /marejada hasta 0,8 m ·/.test(m3.texto) && m3.texto.indexOf("sobre el umbral") < 0,
+  /marejada hasta 0,8 m/.test(m3.texto));
 chequear("dice por qué 18 y no 20",
   /límite de operación del terminal son 20 kn/.test(m.texto), true);
 chequear("y de dónde sale el pronóstico", m.texto.indexOf("Open-Meteo") > 0, true);
