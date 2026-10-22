@@ -23,6 +23,11 @@ on:
     # cola; para un aviso con 24 h de horizonte eso no cambia nada.
     - cron: "17 * * * *"
   workflow_dispatch:          # y a mano, para probar
+    inputs:
+      forzar:
+        description: "Mandar un correo de prueba aunque no haya cruzado el umbral"
+        type: boolean
+        default: false
 
 # Una sola ejecución a la vez: dos en paralelo leerían el mismo estado
 # guardado y mandarían el aviso dos veces.
@@ -57,6 +62,7 @@ jobs:
           ALERTA_PARA: ${{ vars.ALERTA_PARA }}
           ALERTA_ESTADO: .estado-alerta/clima.json
           ALERTA_HORAS: "24"
+          ALERTA_FORZAR: ${{ inputs.forzar && '1' || '' }}
         run: node scripts/alerta-clima.js
 
       - name: Guardar el estado

@@ -15,6 +15,11 @@
  *   ALERTA_ESTADO    archivo donde guardar el último estado
  *   ALERTA_HORAS     horizonte en horas (24 por omisión)
  *   ALERTA_SIMULAR   "1" para no enviar nada y escribir el correo en pantalla
+ *   ALERTA_FORZAR    "1" manda un correo de prueba con el estado actual, haya
+ *                    cruzado el umbral o no, y NO guarda el estado. Sirve para
+ *                    comprobar que el correo llega sin esperar a que haya
+ *                    viento: con el pronóstico tranquilo no se manda nada, y
+ *                    sin esto no habría forma de saber si está bien puesto.
  *   ALERTA_FIXTURE   JSON {pron, mar} con respuestas guardadas, en vez de
  *                    consultar la API. Sirve para probar el aviso sin red y
  *                    sin esperar a que haya temporal de verdad.
@@ -26,6 +31,7 @@ var ALERTA = require("../js/alerta.js");
 var ESTADO = process.env.ALERTA_ESTADO || path.join(__dirname, "..", ".estado-alerta.json");
 var HORAS = Number(process.env.ALERTA_HORAS) > 0 ? Number(process.env.ALERTA_HORAS) : ALERTA.HORAS;
 var SIMULAR = process.env.ALERTA_SIMULAR === "1";
+var FORZAR = process.env.ALERTA_FORZAR === "1";
 
 function leerEstado(){
   try{ return JSON.parse(fs.readFileSync(ESTADO, "utf8")); }
@@ -104,6 +110,23 @@ obtener().then(function(r){
   console.log("Antes:", (anterior && anterior.nivel) || "(sin estado)",
               "· ahora:", actual.nivel,
               actual.motivos.length ? "(" + actual.motivos.join(" · ") + ")" : "");
+
+  if(FORZAR){
+    /* Prueba de cañería: se manda pase lo que pase y no se toca el estado
+       guardado, para no comerse el aviso de verdad que venga después. */
+    var prueba = ALERTA.mensaje(
+      {tipo: actual.fuera ? "entra" : "vuelve", antes: null, ahora: actual.nivel},
+      actual, {horas: HORAS});
+    /* El asunto se rehace: reusar el de «vuelve» dejaba un «dentro de rango
+       otra vez» que no viene a cuento en una prueba. */
+    prueba.asunto = "[PRUEBA] [PPT] " + (actual.fuera
+      ? "Viento sobre umbral — " + actual.motivos.join(" · ")
+      : "Pronóstico dentro de rango");
+    prueba.texto = "Correo de prueba lanzado a mano desde GitHub Actions. El estado " +
+      "guardado no se modifica.\n\n" + prueba.texto;
+    console.log("Envío forzado: es una prueba, el estado no se guarda.");
+    return enviar(prueba).then(function(ok){ if(!ok) process.exitCode = 1; });
+  }
 
   if(!c.avisar){
     console.log("Sin cruce de umbral: no se manda nada.");
