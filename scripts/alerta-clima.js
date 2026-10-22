@@ -68,8 +68,19 @@ function enviar(msg){
     console.log(msg.texto);
     console.log("--- fin ---\n");
     if(!SIMULAR && (!clave || !para.length || !de)){
-      console.error("Falta RESEND_API_KEY, ALERTA_PARA o ALERTA_DE: no se envió.");
-      return Promise.resolve(false);
+      /* Sin configurar NO es un fallo: es el estado normal hasta que alguien
+         cargue la clave y los destinatarios. Dejarlo en rojo pintaba el
+         repositorio de rojo cada vez que el pronóstico cruzaba el umbral, y
+         un rojo que siempre está rojo deja de significar algo. Rojo se
+         reserva para «había que enviar y el envío falló», que es cuando hay
+         que mirar. */
+      var faltan = [];
+      if(!clave) faltan.push("RESEND_API_KEY (secret)");
+      if(!de) faltan.push("ALERTA_DE (variable)");
+      if(!para.length) faltan.push("ALERTA_PARA (variable)");
+      console.log("::warning::Correo sin configurar, no se envió. Falta: " + faltan.join(", ") +
+        ". Arriba está el correo que se habría mandado.");
+      return Promise.resolve("sin-configurar");
     }
     return Promise.resolve(true);
   }
@@ -125,7 +136,7 @@ obtener().then(function(r){
     prueba.texto = "Correo de prueba lanzado a mano desde GitHub Actions. El estado " +
       "guardado no se modifica.\n\n" + prueba.texto;
     console.log("Envío forzado: es una prueba, el estado no se guarda.");
-    return enviar(prueba).then(function(ok){ if(!ok) process.exitCode = 1; });
+    return enviar(prueba).then(function(ok){ if(ok === false) process.exitCode = 1; });
   }
 
   if(!c.avisar){
@@ -137,7 +148,11 @@ obtener().then(function(r){
   return enviar(msg).then(function(ok){
     /* El estado se guarda solo si el correo salió. Si falló el envío, la
        próxima corrida tiene que volver a intentarlo: guardar ahora
-       convertiría el fallo en un aviso que nunca se manda. */
+       convertiría el fallo en un aviso que nunca se manda.
+       Sin configurar sí se guarda: no hay nada que reintentar hasta que
+       alguien cargue la clave, y no guardarlo dejaría el registro repitiendo
+       el mismo cruce cada hora. */
+    if(ok === "sin-configurar"){ guardarEstado(ALERTA.estadoAGuardar(actual)); return; }
     if(ok) guardarEstado(ALERTA.estadoAGuardar(actual));
     else process.exitCode = 1;
   });
