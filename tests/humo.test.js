@@ -758,6 +758,88 @@ function chequear(nombre, ok, detalle){
     console.log("  (sin tests/fixtures/recalada.xlsx: se omite la parte de la recalada)");
   }
 
+  /* ── Un CNN-EMB no hereda los campos del anterior ──
+     C AURORA llegó sin espías anotadas —todavía no las tenía— y se quedó con
+     las del YASA PIONEER, y de paso con su eslora: aparecía en octubre en vez
+     de noviembre y su muellaje salía con las horas y los metros de otro
+     barco. El patrón `if(d.campo)` dejaba en pie lo que hubiera.
+
+     Los libros se arman acá, con la forma mínima que lee el importador: no se
+     versionan CNN-EMB, y así la comprobación corre en cualquier máquina. */
+  await (async function(){
+    var tmpC = fs.mkdtempSync(path.join(os.tmpdir(), "cnnemb-"));
+    function libroCnn(nombre, d){
+      var wb = XLSX.utils.book_new();
+      var rte = XLSX.utils.aoa_to_sheet([[]]);
+      XLSX.utils.sheet_add_aoa(rte, [[d.nave]], {origin: "D4"});
+      XLSX.utils.sheet_add_aoa(rte, [[d.inicio], [d.fin], [d.codigo]], {origin: "Y1"});
+      XLSX.utils.book_append_sheet(wb, rte, "RTE");
+      /* La hoja MUELLAJE, con sus etiquetas en A y los valores en D. Las dos
+         filas «Fecha/Hora» van siempre: lo que cambia es si traen valor. */
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+        ["Fecha/Hora 1a espía :", null, null, d.espia || null],
+        ["Fecha/Hora ultima espia.:", null, null, d.ultEspia || null],
+        ["Tiempo Muellaje (horas decimales)", null, null, d.horasMuellaje || null],
+        ["Tiempo Terminal en Mantenimiento (horas decimales)", null, null, 0],
+        ["Eslora Nave (mts)", null, null, d.eslora || null],
+        ["Tarifa muelle (US$ metro eslora/hora)", null, null, d.tarifa || null],
+        ["(NWH) Net Wharfage Hours (horas)", null, null, d.nwh || null],
+        ["MUELLAJE (US$)", null, null, d.muellaje || null]
+      ]), "MUELLAJE");
+      var f = path.join(tmpC, nombre);
+      fs.writeFileSync(f, Buffer.from(XLSX.write(wb, {type:"array", bookType:"xlsx"})));
+      return f;
+    }
+    var completo = libroCnn("CNN-EMB-900.xlsx", {
+      nave:"MN PRIMERA", codigo:"CNN-EMB-900",
+      inicio:"2026-10-16 16:40", fin:"2026-10-23 17:05",
+      espia:"2026-10-11 04:20", ultEspia:"2026-10-24 03:00",
+      horasMuellaje:310.7, eslora:299.9, tarifa:1.7, nwh:310.7, muellaje:158362.9
+    });
+    /* El segundo, como llegó el de verdad: carga de noviembre y la hoja de
+       muellaje todavía sin espías ni eslora. */
+    var sinEspias = libroCnn("CNN-EMB-901.xlsx", {
+      nave:"MN SEGUNDA", codigo:"CNN-EMB-901",
+      inicio:"2026-11-06 12:12", fin:"2026-11-12 07:00"
+    });
+    {
+      await pagina.setInputFiles("#archivo", completo);
+      await pagina.waitForTimeout(1500);
+      var uno = await pagina.evaluate(function(){
+        return {nave: document.getElementById("nave").value,
+                espia: document.getElementById("primeraEspia").value,
+                eslora: document.getElementById("eslora").value};
+      });
+      chequear("el primer CNN-EMB trae sus espías",
+        uno.espia.indexOf("2026-10-11") === 0 && uno.eslora === "299.9", JSON.stringify(uno));
+
+      await pagina.setInputFiles("#archivo", sinEspias);
+      await pagina.waitForTimeout(1500);
+      var dos = await pagina.evaluate(function(){
+        return {nave: document.getElementById("nave").value,
+                espia: document.getElementById("primeraEspia").value,
+                ultEspia: document.getElementById("ultimaEspia").value,
+                eslora: document.getElementById("eslora").value,
+                inicio: document.getElementById("inicioCarga").value,
+                fin: document.getElementById("finCarga").value};
+      });
+      chequear("el segundo no hereda la espía del primero",
+        dos.espia === "" && dos.ultEspia === "", JSON.stringify(dos));
+      chequear("ni su eslora", dos.eslora === "", dos.eslora || "(vacía)");
+      chequear("y sí trae sus propias fechas de carga",
+        dos.inicio.indexOf("2026-11-06") === 0 && dos.fin.indexOf("2026-11-12") === 0,
+        dos.inicio + " → " + dos.fin);
+      /* Lo que se ve en el historial: el mes correcto. Con la espía heredada
+         el embarque de noviembre se agrupaba en octubre. */
+      var hist = await pagina.$$eval("#selector-recaladas option", function(ns){
+        return ns.map(function(n){ return n.textContent.trim(); })
+                 .filter(function(t){ return /CNN-EMB-901/.test(t); })[0] || "";
+      });
+      chequear("y en el historial cae en noviembre", /nov/.test(hist), hist);
+      sinErrores("cargar dos CNN-EMB seguidos");
+    }
+  })();
+
   await navegador.close();
   s.srv.close();
 

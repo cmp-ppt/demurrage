@@ -216,19 +216,28 @@
       avisoNor("");
       $("baseInicio").value = "amarre";
     }
-    if(d.nave)   $("nave").value = d.nave;
-    if(d.codigo) $("codigo").value = d.codigo;
-    if(d.tonelaje != null) $("tonelaje").value = d.tonelaje;
-    if(d.eslora != null)   $("eslora").value = d.eslora;
-    if(d.tarifaMuelle != null) $("tarifaMuelle").value = d.tarifaMuelle;
-    if(d.primeraEspia) $("primeraEspia").value = d.primeraEspia;
-    if(d.ultimaEspia)  $("ultimaEspia").value  = d.ultimaEspia;
-    if(d.inicioEmbarque) $("inicioCarga").value = d.inicioEmbarque;
-    if(d.finEmbarque)    $("finCarga").value    = d.finEmbarque;
-    if(d.horasMantenimientoMuellaje != null) $("horasMantenimientoMuellaje").value = red2(d.horasMantenimientoMuellaje);
-    if(d.horasGira != null) $("horasGira").value = red2(d.horasGira);
-    if(d.horasTotales != null)    $("horasTotales").value = red2(d.horasTotales);
-    if(d.horasOpEfectiva != null) $("horasOpEfectiva").value = red2(d.horasOpEfectiva);
+    /* Los campos del CNN-EMB se escriben SIEMPRE, traiga valor o no.
+       Con `if(d.campo)` delante, un campo que el libro nuevo no trae se
+       quedaba con el del embarque anterior: C AURORA, que todavía no tiene
+       espías anotadas, heredó las del YASA PIONEER y con ellas su eslora,
+       así que aparecía en octubre y su muellaje salía con las horas y los
+       metros de otro barco. Vacío quiere decir «no está lleno todavía», no
+       «deja lo que había». El lector ya avisa de lo que no pudo leer. */
+    var ponerSiempre = [
+      ["nave", "nave"], ["codigo", "codigo"], ["tonelaje", "tonelaje"],
+      ["eslora", "eslora"], ["tarifaMuelle", "tarifaMuelle"],
+      ["primeraEspia", "primeraEspia"], ["ultimaEspia", "ultimaEspia"],
+      ["inicioEmbarque", "inicioCarga"], ["finEmbarque", "finCarga"]
+    ];
+    ponerSiempre.forEach(function(par){
+      var v = d[par[0]];
+      $(par[1]).value = (v == null || v === "") ? "" : v;
+    });
+    [["horasMantenimientoMuellaje", "horasMantenimientoMuellaje"], ["horasGira", "horasGira"],
+     ["horasTotales", "horasTotales"], ["horasOpEfectiva", "horasOpEfectiva"]
+    ].forEach(function(par){
+      $(par[1]).value = d[par[0]] == null ? "" : red2(d[par[0]]);
+    });
     [["calado","rteCalado"], ["calado","rteCaladoRte"],
      ["horasMuellajeLibro","rteHorasMuellaje"], ["nwhLibro","rteNwh"],
      ["muellajeLibro","rteMuellajeUsd"],
