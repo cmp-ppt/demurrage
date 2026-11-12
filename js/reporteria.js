@@ -97,6 +97,39 @@
     return TRIMESTRES[t] ? t : null;
   }
 
+  /** El trimestre de calendario de una fecha: Q1 enero-marzo … Q4 octubre-diciembre. */
+  function trimestreDeFecha(d){
+    var f = (d instanceof Date) ? d : new Date(d);
+    return isNaN(f) ? null : "Q" + (Math.floor(f.getMonth() / 3) + 1);
+  }
+
+  /**
+   * Recaladas cuyo trimestre declarado no cuadra con NINGUNA de sus fechas.
+   *
+   * Se exige que todos los hitos caigan en el mismo trimestre antes de
+   * reclamar: una nave que atraca el 29 de septiembre y termina de cargar el
+   * 2 de octubre cruza el corte de verdad, y el libro puede ponerla en
+   * cualquiera de los dos con razón. Avisar ahí sería ruido, y un aviso que
+   * se equivoca se deja de leer.
+   */
+  function desencajadas(recaladas){
+    var HITOS = ["laycanDesde", "laycanHasta", "eta", "nor", "atb", "inicioCarga", "finCarga"];
+    return (recaladas || []).map(function(r){
+      if(!r.trimestre) return null;
+      var qs = {}, fechas = [];
+      HITOS.forEach(function(k){
+        var q = r[k] ? trimestreDeFecha(r[k]) : null;
+        if(q){ qs[q] = true; fechas.push(new Date(r[k])); }
+      });
+      var claves = Object.keys(qs);
+      if(claves.length !== 1 || claves[0] === r.trimestre) return null;
+      fechas.sort(function(a, b){ return a - b; });
+      var iso = function(f){ return f.toISOString().slice(0, 10); };
+      return {nave: r.nave, declarado: r.trimestre, porFecha: claves[0],
+              desde: iso(fechas[0]), hasta: iso(fechas[fechas.length - 1])};
+    }).filter(Boolean);
+  }
+
   /* ─────────────────── una fila por recalada ─────────────────── */
 
   function leerRecaladas(ws){
@@ -281,6 +314,23 @@
       avisos.push("La hoja PUNTA TOTORALILLO no trajo ninguna recalada con trimestre y nave.");
     }
 
+    /* El trimestre lo declara la columna A y es la que manda: no se deduce
+       de la fecha, porque el libro es lo que se presenta y lo que se audita,
+       y una app que «corrige» en silencio deja dos cifras distintas para la
+       misma temporada sin que nadie sepa cuál citar.
+       Pero cuando no cuadra hay que decirlo. Los trimestres son los del
+       calendario —Q1 enero a marzo, Q4 octubre a diciembre— y una recalada
+       cuyos hitos caen enteros en otro trimestre del que dice la columna A
+       es un error de tipeo en el Excel, no un caso de borde. Pasó: MINERAL
+       BOTSWANA, con laycan, NOR, atraque y carga los siete en octubre,
+       rotulada Q3. Con eso Q4 no existía en el filtro y la nave entraba en
+       los totales del trimestre equivocado. */
+    desencajadas(datos.recaladas).forEach(function(d){
+      avisos.push("«" + d.nave + "» dice " + d.declarado + " en la columna A, pero sus fechas " +
+        "están todas en " + d.porFecha + " (" + d.desde + " a " + d.hasta + "). " +
+        "Revisa el trimestre en el libro: así queda contada en el trimestre equivocado.");
+    });
+
     /* Las dos hojas principales describen las mismas recaladas. Si una trae
        naves que la otra no, los promedios de espera salen sobre un universo
        distinto al de los montos, y nadie lo nota mirando el resultado. */
@@ -306,6 +356,7 @@
   }
 
   var api = {
+    trimestreDeFecha: trimestreDeFecha, desencajadas: desencajadas,
     desdeLibro: desdeLibro,
     leerRecaladas: leerRecaladas,
     leerTiempos: leerTiempos,

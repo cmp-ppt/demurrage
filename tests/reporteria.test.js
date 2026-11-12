@@ -203,5 +203,48 @@ chequear("sin la hoja principal lo dice",
   vacio.avisos.some(function(a){ return a.indexOf("PUNTA TOTORALILLO") >= 0; }), true);
 chequear("y no inventa recaladas", vacio.datos.recaladas.length, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("El trimestre declarado contra las fechas de la fila");
+/* Los trimestres son los del calendario: Q1 enero-marzo, Q4 octubre-diciembre.
+   El libro los declara en la columna A y esa columna manda —no se deduce de
+   la fecha, porque el libro es lo que se presenta y se audita— pero cuando no
+   cuadra hay que decirlo. Pasó de verdad: MINERAL BOTSWANA con laycan, NOR,
+   atraque y carga los siete en octubre, rotulada Q3. Con eso Q4 no aparecía
+   en el filtro y la nave sumaba en el trimestre equivocado. */
+function F(iso){ return new Date(iso + "T12:00:00"); }
+chequear("enero es Q1", R.trimestreDeFecha(F("2026-01-15")), "Q1");
+chequear("marzo también", R.trimestreDeFecha(F("2026-03-31")), "Q1");
+chequear("abril es Q2", R.trimestreDeFecha(F("2026-04-01")), "Q2");
+chequear("septiembre es Q3", R.trimestreDeFecha(F("2026-09-30")), "Q3");
+chequear("octubre es Q4", R.trimestreDeFecha(F("2026-10-01")), "Q4");
+chequear("y diciembre también", R.trimestreDeFecha(F("2026-12-31")), "Q4");
+chequear("basura no da trimestre", R.trimestreDeFecha("x"), null);
+
+var mal = R.desencajadas([{nave:"MINERAL BOTSWANA", trimestre:"Q3",
+  laycanDesde:F("2026-10-01"), laycanHasta:F("2026-10-07"), eta:F("2026-10-03"),
+  nor:F("2026-10-03"), atb:F("2026-10-04"), inicioCarga:F("2026-10-04"),
+  finCarga:F("2026-10-09")}]);
+chequear("la fila mal rotulada se detecta", mal.length, 1);
+chequear("y se dice cuál debería ser", mal[0].porFecha, "Q4");
+chequear("con lo que declara el libro", mal[0].declarado, "Q3");
+chequear("y el rango de fechas que lo demuestra", mal[0].desde + " a " + mal[0].hasta,
+  "2026-10-01 a 2026-10-09");
+
+/* Lo que NO tiene que reclamar: una nave que cruza el corte de verdad. El
+   libro puede ponerla en cualquiera de los dos trimestres con razón, y un
+   aviso que se equivoca se deja de leer. */
+chequear("una nave que cruza el corte no se reclama",
+  R.desencajadas([{nave:"NEGONEGO", trimestre:"Q3",
+    atb:F("2026-09-29"), inicioCarga:F("2026-09-30"), finCarga:F("2026-10-02")}]).length, 0);
+chequear("ni la que cuadra con lo declarado",
+  R.desencajadas([{nave:"JUDD", trimestre:"Q2", finCarga:F("2026-06-06")}]).length, 0);
+/* Sin trimestre declarado no hay nada que contrastar: eso ya lo avisa el
+   lector por otro lado. */
+chequear("sin trimestre no se reclama",
+  R.desencajadas([{nave:"SIN Q", finCarga:F("2026-10-02")}]).length, 0);
+chequear("sin fechas tampoco",
+  R.desencajadas([{nave:"SIN FECHAS", trimestre:"Q1"}]).length, 0);
+chequear("sin recaladas no revienta", R.desencajadas().length, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);
