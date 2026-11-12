@@ -469,9 +469,74 @@ chequear("sin argumentos no revienta", C.caladoDeTurno(), null);
 /* El prefijo del CNN-EMB contra el nombre pelado de la planilla. */
 chequear("MN delante no impide el cruce", cal("MN CHINA TRIUMPH", 200894, "2026-09-05").tm, 200894);
 
+/* La planilla y el libro parten los nombres distinto: la de octubre trae
+   «CAN CUN» donde el CNN-EMB dice «CANCUN». Con la comparación exacta esa
+   nave se quedaba sin calado y nadie se enteraba. */
+var conEspacio = {"2026-10": {porNave: [{clave:"CAN CUN", tm:49640}]}};
+chequear("el nombre partido distinto cruza igual",
+  C.caladoDeTurno({nave:"MN CANCUN", cargo:49000, finCarga:F("2026-10-10")}, conEspacio).tm, 49640);
+chequear("y al revés también",
+  C.caladoDeTurno({nave:"CAN CUN", cargo:49000, finCarga:F("2026-10-10")},
+    {"2026-10": {porNave: [{clave:"CANCUN", tm:49640}]}}).tm, 49640);
+/* Pero no cualquier parecido: dos naves distintas siguen siendo distintas. */
+chequear("una nave que no está sigue sin calado",
+  C.caladoDeTurno({nave:"MN CANCUN", cargo:49000, finCarga:F("2026-10-10")},
+    {"2026-10": {porNave: [{clave:"CANCION", tm:49640}]}}).tm, null);
+
 chequear("el mes anterior a enero es diciembre", C.mesAnterior("2026-01"), "2025-12");
 chequear("y dentro del año baja uno", C.mesAnterior("2026-09"), "2026-08");
 chequear("basura no da mes", C.mesAnterior("x"), null);
+
+/* ---------------------------------------------------------------- */
+bloque("Hasta dónde llega el libro");
+
+/* El libro lo regenera el área comercial cada cierto tiempo. Entremedio uno
+   sigue calculando embarques que el libro todavía no trae, y como toda la
+   temporada sale del libro, esos embarques no aparecen en ninguna cifra.
+   Antes no había forma de distinguir «no hubo naves» de «el libro no llegó». */
+var libro = [
+  {nave:"CHINA TRIUMPH", codigo:"CNN-EMB-430", trimestre:"Q3", finCarga:"2026-09-05 12:00"},
+  {nave:"MINERAL BOTSWANA", codigo:"CNN-EMB-438", trimestre:"Q4", finCarga:"2026-10-18 06:00"}
+];
+var guardadas = [
+  {campos:{nave:"MN CHINA TRIUMPH", codigo:"CNN-EMB-430", finCarga:"2026-09-05 12:00"}},
+  {campos:{nave:"MN YASA PIONEER", codigo:"CNN-EMB-440", finCarga:"2026-11-04 09:30"}},
+  {campos:{nave:"MN C AURORA", codigo:"CNN-EMB-441", finCarga:"2026-11-09 18:00"}}
+];
+var alc = C.alcanceDelLibro(libro, guardadas);
+chequear("el último mes del libro es octubre", alc.ultimo.getMonth(), 9);
+chequear("y con su trimestre", alc.ultimoTrimestre, "Q4");
+chequear("dos embarques guardados quedan fuera", alc.fuera.length, 2);
+chequear("la nave que sí está no se denuncia",
+  alc.fuera.filter(function(x){ return x.codigo === "CNN-EMB-430"; }).length, 0);
+chequear("el más reciente va primero", alc.fuera[0].codigo, "CNN-EMB-441");
+chequear("y trae la fecha para ubicarlo", alc.fuera[0].fecha, "2026-11-09 18:00");
+
+/* Una nave con dos recaladas en el libro deja a emparejar sin decidir cuál
+   es. Eso no es «falta del libro»: la nave está, y avisar lo contrario
+   mandaría a pedir filas que ya existen. */
+var dosEscalas = [
+  {nave:"PIGI", codigo:"CNN-EMB-410", trimestre:"Q2", finCarga:"2026-05-20 10:00"},
+  {nave:"PIGI", codigo:"CNN-EMB-419", trimestre:"Q2", finCarga:"2026-06-12 10:00"}
+];
+chequear("una nave ambigua está en el libro, no fuera",
+  C.alcanceDelLibro(dosEscalas, [{campos:{nave:"MN PIGI", codigo:"CNN-EMB-419"}}]).fuera.length, 0);
+
+/* Sin libro no hay nada que decir; con libro y sin historial tampoco falta
+   nadie. Ninguno de los dos casos debe reventar. */
+chequear("sin libro no hay alcance", C.alcanceDelLibro([], guardadas).ultimo, null);
+chequear("sin libro tampoco hay faltantes", C.alcanceDelLibro([], guardadas).fuera.length, 0);
+chequear("sin historial no falta nadie", C.alcanceDelLibro(libro, []).fuera.length, 0);
+chequear("sin argumentos no revienta", C.alcanceDelLibro().ultimo, null);
+/* Una recalada guardada a medio llenar, sin nombre, no se cuenta: no hay
+   contra qué cruzarla y aparecería como un aviso en blanco. */
+chequear("una ficha sin nave se ignora",
+  C.alcanceDelLibro(libro, [{campos:{codigo:"CNN-EMB-999"}}, {}]).fuera.length, 0);
+
+/* El libro puede traer filas futuras sin fin de carguío todavía: ahí el
+   alcance lo marca el hito que sí tenga. */
+chequear("sin fin de carguío manda el ATB",
+  C.alcanceDelLibro([{nave:"X", trimestre:"Q4", atb:"2026-12-02 08:00"}], []).ultimo.getMonth(), 11);
 
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

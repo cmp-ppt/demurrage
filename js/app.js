@@ -2136,6 +2136,11 @@
       });
     }
     sel.value = abierto || elegido || "";
+    /* El aviso de alcance cuenta embarques del historial contra el libro:
+       con uno nuevo guardado, esa cuenta cambió aunque el libro sea el
+       mismo. Va acá porque todos los caminos que tocan la flota —guardar,
+       importar varios, bajar de la nube— pasan por este repintado. */
+    pintarAlcanceDelLibro();
   }
 
   function buscar(id){
@@ -2309,6 +2314,46 @@
     else if(partes.length) partes.push("sin planillas de turno");
     if(nota) partes.push(nota);
     $("rep-origen").textContent = partes.length ? partes.join(" · ") : "sin cargar";
+    pintarAlcanceDelLibro();
+  }
+
+  /**
+   * Hasta dónde llega el libro, y qué embarques guardados no están en él.
+   *
+   * Sin esto, un filtro que llega hasta octubre no distingue entre «no hubo
+   * naves en noviembre» y «el libro todavía no llegó a noviembre». Son cosas
+   * muy distintas y la segunda es la normal: el libro lo regenera el área
+   * comercial cada cierto tiempo, y mientras tanto los embarques del
+   * historial no cuentan en la temporada ni en las TM embarcadas.
+   */
+  function pintarAlcanceDelLibro(){
+    var caja = $("rep-alcance");
+    if(!caja) return;
+    var recaladas = (temporada && temporada.datos && temporada.datos.recaladas) || [];
+    if(!recaladas.length){ caja.hidden = true; caja.innerHTML = ""; return; }
+
+    var a = CONC.alcanceDelLibro(recaladas, flota);
+    var partes = [];
+    if(a.ultimo){
+      partes.push("El libro llega hasta <strong>" + esc(MES[a.ultimo.getMonth()]) + " " +
+        a.ultimo.getFullYear() + "</strong>" + (a.ultimoTrimestre ? " (" + esc(a.ultimoTrimestre) + ")" : "") + ".");
+    }
+    if(a.fuera.length){
+      partes.push("Tienes <strong>" + a.fuera.length + "</strong> " +
+        (a.fuera.length === 1 ? "embarque guardado que el libro no trae" :
+                                "embarques guardados que el libro no trae") + ": " +
+        a.fuera.slice(0, 4).map(function(x){
+          var f = L.parseFechaHora(x.fecha);
+          return esc(x.nave) + (x.codigo ? " (" + esc(x.codigo) + ")" : "") +
+                 (f ? ", " + MES[f.getMonth()].slice(0, 3) : "");
+        }).join(" · ") + (a.fuera.length > 4 ? " y " + (a.fuera.length - 4) + " más" : "") + ". " +
+        "Hasta que el área comercial los agregue no cuentan en la temporada " +
+        "ni en las TM embarcadas.");
+    }
+    caja.innerHTML = partes.length
+      ? '<div class="aviso ' + (a.fuera.length ? "warn" : "info") + '">' + partes.join(" ") + "</div>"
+      : "";
+    caja.hidden = !partes.length;
   }
 
   var CLAVE_TEMP = "demurrage-ppt.temporada.v1";

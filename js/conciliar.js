@@ -470,6 +470,47 @@
     return out;
   }
 
+  /**
+   * Hasta dónde llega el libro, y qué embarques guardados no están en él.
+   *
+   * Toda la pestaña de temporada sale del libro: trimestres, meses, montos y
+   * TM embarcadas. Un embarque que está en el historial pero no en el libro
+   * —porque el área comercial todavía no agregó su fila— no aparece en
+   * ninguna de esas cifras, y desde la pantalla no hay forma de saberlo:
+   * se ve un filtro que llega hasta octubre y no se sabe si es que no hubo
+   * naves en noviembre o es que el libro no llegó.
+   *
+   * `emparejar` devuelve null solo cuando el nombre no está en ninguna fila.
+   * Una nave con dos recaladas que no se pueden separar por fecha devuelve
+   * `ambigua`, y ésa SÍ está en el libro: no va en esta lista.
+   */
+  function alcanceDelLibro(recaladas, flota){
+    var out = {ultimo: null, ultimoTrimestre: "", fuera: []};
+    recaladas = recaladas || [];
+    if(!recaladas.length) return out;
+
+    recaladas.forEach(function(r){
+      var f = aFecha(r.finCarga || r.atb || r.nor || r.eta);
+      if(f && (!out.ultimo || f > out.ultimo)){ out.ultimo = f; out.ultimoTrimestre = r.trimestre || ""; }
+    });
+
+    (flota || []).forEach(function(reg){
+      var c = (reg && reg.campos) || {};
+      if(!c.nave) return;
+      var par = emparejar(c.nave, recaladas, {
+        finCarga: c.finCarga, inicioCarga: c.inicioCarga,
+        primeraEspia: c.primeraEspia, arribo: c.arribo
+      });
+      if(par) return;                         // está en el libro, aunque sea ambigua
+      out.fuera.push({nave: c.nave, codigo: c.codigo || "",
+                      fecha: c.finCarga || c.inicioCarga || c.primeraEspia || ""});
+    });
+    /* Del más reciente al más antiguo: lo que falta por agregar al libro es
+       casi siempre lo último que cargó. */
+    out.fuera.sort(function(a, b){ return (b.fecha || "") > (a.fecha || "") ? 1 : -1; });
+    return out;
+  }
+
   /** Clave de mes «YYYY-MM» de una fecha, en hora local. */
   function claveMes(d){
     var f = aFecha(d);
@@ -522,11 +563,21 @@
   function tmEnMes(porMes, clave, nave){
     var m = porMes && porMes[clave];
     var lista = (m && m.porNave) || [];
+    /* Primero el nombre tal cual; si no cruza, otra vez sin espacios. La
+       planilla de turno y el libro los parten distinto: octubre trae «CAN
+       CUN» donde el CNN-EMB dice «CANCUN». Con la comparación exacta esa
+       nave se quedaba sin calado y nadie se enteraba, que es la peor forma
+       de fallar. Pegar las palabras no confunde dos naves: tendrían que
+       llamarse igual salvo por dónde cae un espacio. */
+    var pegado = function(t){ return String(t).replace(/ /g, ""); };
+    var objetivo = pegado(nave);
+    var porEspacios = null;
     for(var i = 0; i < lista.length; i++){
-      var c = lista[i].clave || normalizar(lista[i].nave);
-      if(normalizar(c) === nave) return Number(lista[i].tm) || 0;
+      var c = normalizar(lista[i].clave || lista[i].nave);
+      if(c === nave) return Number(lista[i].tm) || 0;
+      if(porEspacios === null && pegado(c) === objetivo) porEspacios = Number(lista[i].tm) || 0;
     }
-    return null;
+    return porEspacios;
   }
 
   /**
@@ -595,7 +646,8 @@
              datosDeContrato: datosDeContrato,
              tonelajeEmbarcado: tonelajeEmbarcado,
              claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno,
-             mesAnterior: mesAnterior, caladoDeTurno: caladoDeTurno};
+             mesAnterior: mesAnterior, caladoDeTurno: caladoDeTurno,
+             alcanceDelLibro: alcanceDelLibro};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 
