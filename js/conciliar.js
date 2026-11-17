@@ -545,13 +545,20 @@
     });
     orden.sort();
 
-    var total = 0, tengo = [], faltan = [];
+    var total = 0, tengo = [], faltan = [], parciales = [];
     orden.forEach(function(k){
       var m = porMes && porMes[k];
-      if(m && typeof m.totalMineral === "number"){ total += m.totalMineral; tengo.push(k); }
+      if(m && typeof m.totalMineral === "number"){
+        total += m.totalMineral; tengo.push(k);
+        /* Una planilla de mitad de mes cuenta como planilla —su tonelaje es
+           real— pero el mes no está cerrado. Sumarla sin decirlo daría un
+           total que se lee como el del periodo y no lo es. */
+        if(m.parcial) parciales.push({mes: k, hasta: m.hasta || null});
+      }
       else faltan.push(k);
     });
     return {total: total, meses: orden, conPlanilla: tengo, faltan: faltan,
+            parciales: parciales,
             completo: orden.length > 0 && faltan.length === 0};
   }
 
@@ -611,11 +618,36 @@
    * Devuelve null cuando no hay con qué: sin planilla del mes de cierre, o
    * con una planilla que no nombra la nave.
    */
+  /**
+   * ¿La planilla de ese mes alcanza a cubrir el fin de carguío de la nave?
+   *
+   * Con la planilla del cierre de mes siempre sí. Con una de mitad de mes
+   * —la del día 17, digamos— una nave que terminó de cargar el 20 aparece
+   * con lo que llevaba al 17: media carga anotada como si fuera el calado
+   * definitivo, que entra al laytime y cambia el demurrage sin que nadie lo
+   * note. Es el caso que hay que descartar.
+   */
+  function planillaAlcanza(m, finCarga){
+    if(!m || !m.parcial) return true;
+    var f = aFecha(finCarga);
+    if(!f || !m.hasta) return false;          // sin con qué comparar, no se arriesga
+    /* El corte es el final del día que trae el nombre del archivo. */
+    var corte = new Date(f.getFullYear(), f.getMonth(), Number(m.hasta), 23, 59, 59);
+    return f <= corte;
+  }
+
   function caladoDeTurno(fila, porMes){
     if(!fila || !porMes) return null;
     var cierre = claveMes(fila.finCarga);
     if(!cierre) return null;
     var nave = normalizar(fila.nave);
+    var mCierre = porMes[cierre];
+    if(mCierre && !planillaAlcanza(mCierre, fila.finCarga)){
+      return {tm: null, meses: [], partida: false, bl: Number(fila.cargo) || 0,
+              motivo: "la planilla de " + cierre + " llega hasta el día " +
+                      (mCierre.hasta || "?") + " y " + fila.nave +
+                      " terminó de cargar después: su cifra todavía es parcial"};
+    }
     var tm = tmEnMes(porMes, cierre, nave);
     if(tm === null || tm <= 0){
       return {tm: null, meses: [], partida: false, bl: Number(fila.cargo) || 0,
@@ -652,7 +684,8 @@
              tonelajeEmbarcado: tonelajeEmbarcado,
              claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno,
              mesAnterior: mesAnterior, caladoDeTurno: caladoDeTurno,
-             alcanceDelLibro: alcanceDelLibro};
+             alcanceDelLibro: alcanceDelLibro,
+             planillaAlcanza: planillaAlcanza};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 

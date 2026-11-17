@@ -538,5 +538,51 @@ chequear("una ficha sin nave se ignora",
 chequear("sin fin de carguío manda el ATB",
   C.alcanceDelLibro([{nave:"X", trimestre:"Q4", atb:"2026-12-02 08:00"}], []).ultimo.getMonth(), 11);
 
+/* ---------------------------------------------------------------- */
+bloque("La planilla de mitad de mes no da calados definitivos");
+
+/* La del 17 de noviembre trae lo que cada nave llevaba al día 17. Una que
+   terminó de cargar el 20 aparece con media carga, y esa cifra entraba al
+   laytime como si fuera el draft survey: cambia el demurrage sin que nadie
+   lo note. */
+var nov = {"2026-11": {totalMineral: 308075, parcial: true, hasta: 17,
+  porNave: [{clave:"C AURORA", tm:175459}, {clave:"DIGNITY", tm:132616}]}};
+chequear("la nave que ya había terminado sí toma su cifra",
+  C.caladoDeTurno({nave:"MN C AURORA", cargo:176000, finCarga:F("2026-11-14")}, nov).tm, 175459);
+var despues = C.caladoDeTurno({nave:"MN DIGNITY", cargo:200000, finCarga:F("2026-11-20")}, nov);
+chequear("la que terminó después, no", despues.tm, null);
+chequear("y se dice por qué", despues.motivo.indexOf("hasta el día 17") > 0, true);
+/* Justo el día del corte cuenta: la planilla cierra al final de ese día. */
+chequear("el mismo día del corte entra",
+  C.caladoDeTurno({nave:"MN DIGNITY", cargo:133000, finCarga:F("2026-11-17")}, nov).tm, 132616);
+/* Con la planilla del cierre de mes no hay nada que descartar. */
+var novCerrado = {"2026-11": {totalMineral: 500000, parcial: false,
+  porNave: [{clave:"DIGNITY", tm:200000}]}};
+chequear("la planilla de cierre no recorta nada",
+  C.caladoDeTurno({nave:"MN DIGNITY", cargo:200000, finCarga:F("2026-11-28")}, novCerrado).tm, 200000);
+
+chequear("una planilla de cierre siempre alcanza", C.planillaAlcanza({parcial:false}, F("2026-11-30")), true);
+chequear("sin día de corte no se arriesga", C.planillaAlcanza({parcial:true}, F("2026-11-05")), false);
+chequear("sin planilla, alcanza (ya se trata aparte)", C.planillaAlcanza(null, F("2026-11-05")), true);
+
+/* ---------------------------------------------------------------- */
+bloque("El mes abierto se cuenta, pero se dice");
+
+var deTurno = C.embarcadoDeTurno(
+  [{nave:"A", finCarga:F("2026-10-18")}, {nave:"B", finCarga:F("2026-11-14")}],
+  {"2026-10": {totalMineral: 454874},
+   "2026-11": {totalMineral: 308075, parcial: true, hasta: 17}});
+chequear("suma los dos meses", deTurno.total, 762949);
+chequear("ninguno falta", deTurno.faltan.length, 0);
+chequear("pero uno está abierto", deTurno.parciales.length, 1);
+chequear("y se sabe hasta qué día llega", deTurno.parciales[0].hasta, 17);
+chequear("y de qué mes es", deTurno.parciales[0].mes, "2026-11");
+/* `completo` sigue significando «no falta ninguna planilla»: el mes abierto
+   es otra cosa y tiene su propio aviso. */
+chequear("completo sigue mirando solo lo que falta", deTurno.completo, true);
+var soloCerrados = C.embarcadoDeTurno([{nave:"A", finCarga:F("2026-10-18")}],
+  {"2026-10": {totalMineral: 454874}});
+chequear("sin meses abiertos la lista va vacía", soloCerrados.parciales.length, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

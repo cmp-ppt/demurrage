@@ -1526,6 +1526,13 @@
       totalMineral: r.totalMineral,
       totalOtros: r.totalOtros,
       porNave: r.porNave,
+      /* Una planilla de mitad de mes trae lo que iba acumulado hasta ese
+         día, no el mes. Se guarda la distinción —y hasta qué día llega—
+         porque de ella dependen dos cosas que se leen como definitivas: el
+         total de TM embarcadas del mes y el calado de la nave que a esa
+         fecha todavía estaba cargando. */
+      parcial: !r.cierre,
+      hasta: r.periodo.dia,
       archivo: nombreArchivo,
       actualizadoEn: new Date().toISOString()
     };
@@ -1543,6 +1550,12 @@
     var html = "<strong>" + MES[r.periodo.mes] + " " + r.periodo.anio + "</strong>: " +
       mil(r.totalMineral) + " t embarcadas en " + r.porNave.length +
       (r.porNave.length === 1 ? " nave" : " naves") + "." +
+      /* Si es de mitad de mes hay que decirlo acá, al cargarla: es el único
+         momento en que la persona tiene el archivo a la vista y puede
+         reconocer que agarró el que no era. */
+      (r.cierre ? "" : " <strong>Va hasta el día " + r.periodo.dia +
+        "</strong>: el mes no está cerrado, así que el total y los calados de " +
+        "este mes son provisorios.") +
       (r.totalOtros ? " (" + mil(r.totalOtros) + " t de concentrado y MLC quedan fuera: " +
         "no están en el libro de demurrage.)" : "") +
       (rehechos ? " " + rehechos + (rehechos === 1 ? " nave guardada tomó" : " naves guardadas tomaron") +
@@ -2692,18 +2705,27 @@
     /* El denominador va siempre: un total que cubre 8 de 14 naves se lee
        como el total del mes si no dice sobre cuántas está hecho, y con eso
        se presenta a gerencia una cifra que no es la que se embarcó. */
+    /* «Hasta el día N» va en cualquiera de las dos ramas: un mes abierto no
+       es un mes que falta, pero la cifra tampoco es la del mes. */
+    var abiertos = (deTurno.parciales || []).map(function(p){
+      var f = /^(\d{4})-(\d{2})$/.exec(p.mes);
+      var nom = f ? MES[Number(f[2]) - 1].slice(0, 3) : p.mes;
+      return nom + " hasta el " + (p.hasta || "?");
+    });
     if(usaTurno && completo){
       /* De dónde sale la cifra, siempre: es la diferencia entre un número
          que se puede defender en una liquidación y uno que no. */
-      $("t-embarcado-sub").textContent = deTurno.meses.length === 1
+      $("t-embarcado-sub").textContent = (deTurno.meses.length === 1
         ? "planilla de turno · calado del mes"
-        : "planillas de turno · " + deTurno.meses.length + " meses";
+        : "planillas de turno · " + deTurno.meses.length + " meses") +
+        (abiertos.length ? " · " + abiertos.join(", ") : "");
     }else if(usaTurno){
       /* Parcial, y dicho: cuántos meses cubre y cuál falta. */
       $("t-embarcado-sub").textContent = deTurno.conPlanilla.length + " de " +
         deTurno.meses.length + " meses · falta la planilla de " +
         (deTurno.faltan.length <= 3 ? deTurno.faltan.join(", ")
-                                    : deTurno.faltan.length + " meses");
+                                    : deTurno.faltan.length + " meses") +
+        (abiertos.length ? " · " + abiertos.join(", ") : "");
     }else if(!emb.naves){
       $("t-embarcado-sub").textContent = "carga el libro de reportería";
     }else if(!emb.conDato){
@@ -2730,7 +2752,9 @@
        de liquidado cuando hay proyecciones. */
     /* Verde cuando la cifra sale de la planilla —es la exacta—, ámbar
        cuando está armada a pedazos desde los CNN-EMB. */
-    $("kpi-t-embarcado").querySelector(".ico-marca").style.color = completo ? OK
+    /* Un mes abierto tampoco es verde: la cifra es real pero no es la del
+       periodo, y el verde dice «esta se puede llevar a una liquidación». */
+    $("kpi-t-embarcado").querySelector(".ico-marca").style.color = (completo && !abiertos.length) ? OK
       : (usaTurno || (emb.conDato && emb.conDato < emb.naves) || deTurno.faltan.length) ? AVISO
       : "var(--cmp-blue-400)";
     /* Contra el libro, que es la otra cifra que alguien va a citar. */
@@ -2741,6 +2765,10 @@
     if(emb.naves) detalle.push("Libro (BL): " + mil(emb.cargoLibro) + " t sobre " + emb.naves + " naves");
     if(emb.pesometro > 0) detalle.push(mil(emb.pesometro) + " t vienen del pesómetro, no del calado");
     if(deTurno.faltan.length) detalle.push("Sin planilla de turno: " + deTurno.faltan.join(", "));
+    (deTurno.parciales || []).forEach(function(p){
+      detalle.push("La planilla de " + p.mes + " es de mitad de mes: llega hasta el día " +
+                   (p.hasta || "?") + ", el mes no está cerrado");
+    });
     $("kpi-t-embarcado").title = detalle.length ? detalle.join("\n") : "Sin datos para este periodo.";
     /* La tendencia va por MES y no por trimestre como las otras cinco: el
        tonelaje lo trae la planilla de turno, que es mensual, y un trimestre

@@ -95,6 +95,24 @@
   }
 
   /**
+   * ¿La planilla es la del cierre del mes, o una foto de mitad de mes?
+   *
+   * La del último día trae el mes terminado; cualquier otra trae lo que iba
+   * acumulado hasta ese día, con naves posiblemente a medio cargar. Las dos
+   * se llaman igual y tienen la misma hoja, así que lo único que las separa
+   * es la fecha del nombre del archivo. Tomar una del día 17 por el mes
+   * cerrado deja el total del mes corto y el calado de la nave que estaba
+   * cargando, a medias —y en los dos casos sin decirlo.
+   */
+  function ultimoDiaDelMes(anio, mes){        // mes 0-11, como Date
+    return new Date(anio, mes + 1, 0).getDate();
+  }
+  function esCierre(periodo){
+    if(!periodo) return false;
+    return periodo.dia >= ultimoDiaDelMes(periodo.anio, periodo.mes);
+  }
+
+  /**
    * Lee la hoja entera. Nunca lanza: devuelve los reparos en `avisos`, que
    * es como se comporta el resto de los lectores de la app.
    */
@@ -179,6 +197,7 @@
       totalMineral: totalMineral,
       totalOtros: totalOtros,
       periodo: periodo,
+      cierre: esCierre(periodo),
       avisos: avisos
     };
   }
@@ -223,6 +242,7 @@
 
   var api = {BLOQUES: BLOQUES, normalizarNave: normalizarNave,
              mesDeNombre: mesDeNombre, desdeLibro: desdeLibro,
+             esCierre: esCierre, ultimoDiaDelMes: ultimoDiaDelMes,
              fusionarMeses: fusionarMeses, mesesPendientes: mesesPendientes};
 
   if(typeof module === "object" && module.exports) module.exports = api;

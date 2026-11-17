@@ -193,5 +193,23 @@ chequear("en orden de mes",
   "2026-07,2026-09");
 chequear("sin argumentos no revienta", T.mesesPendientes().length, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("Planilla de cierre contra planilla de mitad de mes");
+
+/* Las dos se llaman igual y tienen la misma hoja: lo único que las separa
+   es la fecha del nombre. La del día 17 trae lo que iba acumulado, con
+   naves posiblemente a medio cargar. */
+var cierreDe = function(n){ return T.esCierre(T.mesDeNombre(n)); };
+chequear("31 de octubre cierra el mes", cierreDe("DATOS_TURNO_PPT_31-10-2026.xlsx"), true);
+chequear("30 de septiembre también", cierreDe("DATOS_TURNO_PPT_30-09-2026.xlsx"), true);
+chequear("el 17 de noviembre no", cierreDe("DATOS_TURNO_PPT_17-11-2026.xlsx"), false);
+/* Febrero no tiene día 30: el corte depende del mes, no de un número fijo. */
+chequear("28 de febrero cierra en año común", cierreDe("DATOS_TURNO_PPT_28-02-2026.xlsx"), true);
+chequear("pero el 28 no cierra febrero bisiesto", cierreDe("DATOS_TURNO_PPT_28-02-2028.xlsx"), false);
+chequear("y el 29 sí", cierreDe("DATOS_TURNO_PPT_29-02-2028.xlsx"), true);
+chequear("sin periodo no es cierre", T.esCierre(null), false);
+chequear("abril termina el 30", T.ultimoDiaDelMes(2026, 3), 30);
+chequear("y enero el 31", T.ultimoDiaDelMes(2026, 0), 31);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);
