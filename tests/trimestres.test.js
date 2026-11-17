@@ -395,5 +395,54 @@ chequear("y coincide con el total", +acc2[1].usdPorTonelada.toFixed(4),
 chequear("sin trimestres, ningún punto", T.acumulado([]).length, 0);
 chequear("sin argumento, ningún punto", T.acumulado().length, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("Recaladas provisorias: calculadas acá, no liquidadas");
+
+/* El libro trae lo acordado con el armador; una fila provisoria la arma
+   esta app porque el área comercial todavía no incorporó ese embarque. Lo
+   que las separa es que la provisoria NO está cobrada, y la ficha de
+   «Liquidado» tiene que reflejarlo o estaría diciendo que hay plata en la
+   cuenta que nadie acordó. */
+var conProv = T.porTrimestre({recaladas: [
+  {trimestre:"Q4", nave:"LIQUIDADA", cargo:207232, demurrage:55000, despatch:0,
+   nor:new Date("2026-10-15T06:00:00"), atb:new Date("2026-10-15T12:00:00"),
+   inicioCarga:new Date("2026-10-15T14:00:00"), finCarga:new Date("2026-10-18T06:00:00")},
+  {trimestre:"Q4", nave:"PROVISORIA", cargo:198002, demurrage:0, despatch:-11901,
+   nor:new Date("2026-11-07T12:00:00"), atb:new Date("2026-11-08T06:00:00"),
+   inicioCarga:new Date("2026-11-08T09:00:00"), finCarga:new Date("2026-11-13T18:00:00"),
+   provisoria:true}
+]}, new Date("2026-11-17T00:00:00"));
+var q4 = conProv[0];
+chequear("las dos están en el trimestre", q4.naves, 2);
+chequear("pero solo una está liquidada", q4.liquidadas, 1);
+chequear("y la provisoria se cuenta aparte", q4.provisorias, 1);
+chequear("lo liquidado no incluye la provisoria", q4.netoLiquidado, 55000);
+/* El despatch de la provisoria va a favor: con el demurrage solo, el pie de
+   la ficha decía «aporta US$ 0» de una recalada que aporta −11.901. */
+chequear("el neto no liquidado resta el despatch", q4.netoProyectado, -11901);
+/* El neto del trimestre sí las suma a las dos: es lo que costó la
+   temporada, liquidado o no. */
+chequear("el neto del trimestre suma ambas", q4.neto, 43099);
+
+/* Sin marca, la heurística de siempre: una fila del libro con fin de
+   carguío pasado y tonelaje que no es múltiplo redondo está liquidada. */
+var sinProv = T.porTrimestre({recaladas: [
+  {trimestre:"Q4", nave:"LIQUIDADA", cargo:207232, demurrage:55000, despatch:0,
+   nor:new Date("2026-10-15T06:00:00"), atb:new Date("2026-10-15T12:00:00"),
+   inicioCarga:new Date("2026-10-15T14:00:00"), finCarga:new Date("2026-10-18T06:00:00")}
+]}, new Date("2026-11-17T00:00:00"));
+chequear("sin provisorias el conteo es cero", sinProv[0].provisorias, 0);
+chequear("y todo queda liquidado", sinProv[0].liquidadas, 1);
+
+/* La frase del diagnóstico tiene que nombrar lo provisorio por su nombre:
+   «proyección» haría pensar en una nave que todavía no carga. */
+var frases = T.diagnostico(conProv).frases.join(" ");
+chequear("la prosa dice que no está liquidada", frases.indexOf("no está liquidada") >= 0, true);
+chequear("y que es provisoria, no proyección", frases.indexOf("provisoria") >= 0, true);
+/* Y con el neto, no con el demurrage solo: la frase decía «aportan US$ 0»
+   de una recalada cuyo despatch vale US$ 11.901 a favor. */
+chequear("la frase trae el neto, no el demurrage solo",
+  frases.indexOf("11.901") >= 0, true);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

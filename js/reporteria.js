@@ -104,6 +104,57 @@
   }
 
   /**
+   * Una recalada con forma de fila del libro, armada con el cálculo propio.
+   *
+   * El libro de reportería lo regenera el área comercial cada cierto tiempo
+   * y trae el demurrage YA LIQUIDADO con el armador. Entremedio el terminal
+   * sigue cerrando embarques que el libro todavía no tiene, y la temporada
+   * se quedaba congelada en el último mes del libro: sin Q4, sin noviembre,
+   * y con el acumulado del año parado aunque hubiera naves cargadas.
+   *
+   * Esto arma la fila que falta desde el CNN-EMB y el time sheet propio,
+   * marcada `provisoria: true`. La marca no es decorativa: es la diferencia
+   * entre una cifra que se acordó con el armador y una que se calculó acá,
+   * y todo lo que muestre estas filas tiene que poder decirlo.
+   *
+   * Sin nave o sin fecha de cierre no se arma nada: una fila sin trimestre
+   * no entra en ningún agregado y solo ensuciaría la tabla.
+   */
+  function filaProvisoria(reg, calc){
+    var c = (reg && reg.campos) || {};
+    var h = (calc && calc.hitos) || {};
+    var cierre = h.finCarga || h.ultimaEspia || h.inicioCarga || null;
+    var q = cierre ? trimestreDeFecha(cierre) : null;
+    if(!c.nave || !q) return null;
+    var ts = calc && calc.ts;
+    var n = function(v){ return Number(v) || 0; };
+    return {
+      trimestre: q,
+      nave: c.nave,
+      codigo: c.codigo || "",
+      inco: "",
+      producto: "",
+      laycanDesde: null,
+      laycanHasta: null,
+      eta: h.eta || null,
+      nor: h.nor || null,
+      /* El tonelaje del cálculo, que es el del draft survey cuando lo hay:
+         el mismo que alimenta el laytime de esa nave. */
+      cargo: n(calc && calc.tonelaje),
+      atb: h.primeraEspia || null,      // el ATB del libro es la 1ª espía
+      inicioCarga: h.inicioCarga || null,
+      finCarga: h.finCarga || null,
+      rate: n(c.tarifaDemurrage),
+      /* El libro trae el despatch en negativo y nunca junto al demurrage;
+         `netoLiquidado` los suma tal cual, así que acá se respeta el signo. */
+      demurrage: ts ? Math.round(ts.montoDemurrage) : 0,
+      despatch: ts ? -Math.round(ts.montoDespatch) : 0,
+      comentario: "",
+      provisoria: true
+    };
+  }
+
+  /**
    * Recaladas cuyo trimestre declarado no cuadra con NINGUNA de sus fechas.
    *
    * Se exige que todos los hitos caigan en el mismo trimestre antes de
@@ -357,6 +408,7 @@
 
   var api = {
     trimestreDeFecha: trimestreDeFecha, desencajadas: desencajadas,
+    filaProvisoria: filaProvisoria,
     desdeLibro: desdeLibro,
     leerRecaladas: leerRecaladas,
     leerTiempos: leerTiempos,

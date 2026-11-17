@@ -246,5 +246,58 @@ chequear("sin fechas tampoco",
   R.desencajadas([{nave:"SIN FECHAS", trimestre:"Q1"}]).length, 0);
 chequear("sin recaladas no revienta", R.desencajadas().length, 0);
 
+/* ---------------------------------------------------------------- */
+bloque("La fila provisoria: lo que el libro todavía no trae");
+
+/* El libro lo regenera el área comercial cada cierto tiempo. Entremedio el
+   terminal cierra embarques que el libro no tiene, y la temporada se
+   quedaba parada en el último mes del libro. Esto arma la fila que falta
+   con el cálculo propio, marcada para que nadie la confunda con lo
+   liquidado. */
+var reg = {campos: {nave:"MN C AURORA", codigo:"CNN-EMB-441", tarifaDemurrage:"28000"}};
+var calcDem = {
+  tonelaje: 198002,
+  hitos: {eta: new Date("2026-11-07T10:00:00"), nor: new Date("2026-11-07T12:00:00"),
+          primeraEspia: new Date("2026-11-08T06:00:00"),
+          inicioCarga: new Date("2026-11-08T09:00:00"),
+          finCarga: new Date("2026-11-09T18:00:00")},
+  ts: {montoDemurrage: 41234.6, montoDespatch: 0}
+};
+var fp = R.filaProvisoria(reg, calcDem);
+chequear("queda en el trimestre de calendario", fp.trimestre, "Q4");
+chequear("con el nombre de la nave", fp.nave, "MN C AURORA");
+chequear("y su código, que el libro no trae", fp.codigo, "CNN-EMB-441");
+chequear("el cargo es el tonelaje del cálculo", fp.cargo, 198002);
+chequear("el ATB del libro es la 1ª espía", fp.atb.getDate(), 8);
+chequear("el rate sale del contrato cargado", fp.rate, 28000);
+chequear("el demurrage se redondea al peso", fp.demurrage, 41235);
+chequear("sin despatch no hay cifra", fp.despatch, 0);
+chequear("y queda marcada como provisoria", fp.provisoria, true);
+
+/* El despatch en el libro va en negativo y `netoLiquidado` los suma tal
+   cual: una fila provisoria con el signo al revés inflaría el neto del
+   trimestre en el doble de su propio monto. */
+var fpDesp = R.filaProvisoria(reg, {tonelaje: 50000,
+  hitos: {finCarga: new Date("2026-11-20T00:00:00")},
+  ts: {montoDemurrage: 0, montoDespatch: 9000}});
+chequear("el despatch va en negativo, como en el libro", fpDesp.despatch, -9000);
+chequear("y el demurrage queda en cero", fpDesp.demurrage, 0);
+
+/* Sin fin de carguío manda el hito que haya; sin ninguno no se arma la
+   fila, porque sin trimestre no entra en ningún agregado y solo ensuciaría
+   la tabla. */
+chequear("sin fin de carguío manda la última espía",
+  R.filaProvisoria(reg, {hitos:{ultimaEspia: new Date("2026-07-02T00:00:00")}}).trimestre, "Q3");
+chequear("sin ninguna fecha no se arma fila",
+  R.filaProvisoria(reg, {hitos:{}}), null);
+chequear("sin nombre de nave tampoco",
+  R.filaProvisoria({campos:{}}, calcDem), null);
+chequear("sin argumentos no revienta", R.filaProvisoria(), null);
+/* Un embarque a medio llenar no tiene time sheet: igual debe dar fila, con
+   el demurrage en cero, para que la nave aparezca en la temporada. */
+var sinTs = R.filaProvisoria(reg, {tonelaje: 1000, hitos:{finCarga: new Date("2026-11-20T00:00:00")}});
+chequear("sin time sheet la fila existe igual", sinTs.nave, "MN C AURORA");
+chequear("y su demurrage es cero, no NaN", sinTs.demurrage, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

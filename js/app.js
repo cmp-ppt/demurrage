@@ -2141,6 +2141,10 @@
        mismo. Va acá porque todos los caminos que tocan la flota —guardar,
        importar varios, bajar de la nube— pasan por este repintado. */
     pintarAlcanceDelLibro();
+    /* Y la temporada provisoria, por lo mismo: el embarque recién guardado
+       puede ser de un mes que el libro no cubre, y entonces acaba de
+       aparecer un trimestre nuevo en el filtro. */
+    if(temporada){ recomputarTemporada(); pintarFiltros(); aplicarFiltro(); }
   }
 
   function buscar(id){
@@ -2256,8 +2260,9 @@
   }
 
   function aplicarReporteria(r, nombre){
-    var trimestres = TRI.porTrimestre(r.datos);
-    temporada = {datos: r.datos, trimestres: trimestres, diagnostico: TRI.diagnostico(trimestres)};
+    temporada = {datos: r.datos};
+    recomputarTemporada();
+    var trimestres = temporada.trimestres;
     guardarTemporada();
     /* El libro es lo que permite cruzar las recaladas con la planilla: el
        calado sale del mes de cierre, y el mes de cierre lo da el libro. Sin
@@ -2396,8 +2401,11 @@
   function adoptarTemporada(crudo, nota){
     if(!crudo || !crudo.recaladas || !crudo.recaladas.length) return false;
     rehidratar(crudo);
-    var trimestres = TRI.porTrimestre(crudo);
-    temporada = {datos: crudo, trimestres: trimestres, diagnostico: TRI.diagnostico(trimestres)};
+    temporada = {datos: crudo};
+    /* Los trimestres salen del libro vigente —el libro más lo provisorio—,
+       no del libro solo: si no, el filtro seguiría sin ofrecer el trimestre
+       de los embarques que el libro todavía no trae. */
+    recomputarTemporada();
     pintarOrigenLibros(nota);
     var b = $("bl-reporteria");
     pintarNorPendientes();
@@ -2439,10 +2447,59 @@
 
   var filtroTemporada = {trimestre: "", mes: ""};
 
+  /**
+   * Las recaladas que el libro no trae, armadas con el cálculo propio.
+   *
+   * Son las del historial que `alcanceDelLibro` dejó fuera: embarques ya
+   * cerrados acá que el área comercial todavía no incorporó. Cada una vuelve
+   * a pasar por el motor de laytime —no se guarda el resultado en la ficha—
+   * para que la cifra sea la misma que muestra la banda de Recalada.
+   */
+  function provisorias(){
+    if(!temporada || !temporada.datos || !flota.length) return [];
+    return CONC.alcanceDelLibro(temporada.datos.recaladas, flota).fuera
+      .map(function(x){
+        try{ return REP.filaProvisoria(x.reg, FL.calcular(x.reg)); }
+        catch(e){ return null; }
+      })
+      .filter(Boolean);
+  }
+
+  /**
+   * El libro, más lo que el libro todavía no trae.
+   *
+   * Es lo que mira la banda de Temporada. `temporada.datos` sigue siendo el
+   * libro tal cual, y esa distinción no es cosmética: `temporada.datos` es
+   * lo que se guarda en el navegador y lo que sube a la nube, así que
+   * mezclar acá haría que la próxima persona se bajara un «libro de
+   * reportería» que el área comercial nunca emitió. También es lo que usan
+   * la conciliación y el calado de turno, que comparan el cálculo propio
+   * contra el libro: contra una fila provisoria estarían comparando una
+   * nave consigo misma.
+   */
+  function libroVigente(){
+    if(!temporada || !temporada.datos) return null;
+    var base = temporada.datos;
+    var extra = provisorias();
+    if(!extra.length) return base;
+    var out = {};
+    Object.keys(base).forEach(function(k){ out[k] = base[k]; });
+    out.recaladas = (base.recaladas || []).concat(extra);
+    return out;
+  }
+
+  /** Rehace la vista de la temporada sobre el libro vigente. */
+  function recomputarTemporada(){
+    if(!temporada) return;
+    temporada.vigente = libroVigente();
+    temporada.trimestres = TRI.porTrimestre(temporada.vigente);
+    temporada.diagnostico = TRI.diagnostico(temporada.trimestres);
+  }
+
   /** Rellena los desplegables con lo que de verdad hay en los datos. */
   function pintarFiltros(){
     if(!temporada) return;
-    var d = temporada.datos;
+    var d = temporada.vigente || temporada.datos;
     var qs = {};
     (d.recaladas || []).forEach(function(r){ qs[r.trimestre] = true; });
     var trimestres = Object.keys(qs).sort();
@@ -2459,7 +2516,7 @@
 
   /** Los datos que el tablero está mostrando ahora mismo. */
   function datosFiltrados(){
-    return TRI.filtrar(temporada.datos, filtroTemporada);
+    return TRI.filtrar(temporada.vigente || temporada.datos, filtroTemporada);
   }
 
   function aplicarFiltro(){
@@ -2475,7 +2532,7 @@
     $("filtro-nota").textContent = partes.length
       ? "mostrando " + partes.join(" · ") + " — " + sub.recaladas.length +
         (sub.recaladas.length === 1 ? " recalada" : " recaladas")
-      : temporada.datos.recaladas.length + " recaladas · " +
+      : (temporada.vigente || temporada.datos).recaladas.length + " recaladas · " +
         temporada.trimestres.map(function(q){ return q.trimestre; }).join(" · ");
     renderTemporada();
   }
@@ -2539,9 +2596,38 @@
     }});
   }
 
+  /**
+   * El cartel que separa lo liquidado de lo calculado.
+   *
+   * La banda de Temporada siempre había mostrado una sola clase de cifra:
+   * la que el área comercial ya acordó con el armador. Ahora puede incluir
+   * recaladas que el libro no trae, calculadas acá con el CNN-EMB, y eso
+   * cambia qué se puede hacer con el número: una cifra provisoria sirve
+   * para dirigir la operación, no para cobrar. Si no se dice, en la
+   * reunión las dos se leen igual.
+   */
+  function pintarProvisorias(lista){
+    var caja = $("temp-provisorio");
+    if(!caja) return;
+    var prov = (lista || []).filter(function(r){ return r && r.provisoria; });
+    if(!prov.length){ caja.hidden = true; caja.innerHTML = ""; return; }
+    var nombres = prov.slice(0, 4).map(function(r){
+      return esc(r.nave) + (r.codigo ? " (" + esc(r.codigo) + ")" : "");
+    }).join(" · ");
+    caja.innerHTML = '<div class="aviso warn">Incluye <strong>' + prov.length +
+      (prov.length === 1 ? " recalada provisoria" : " recaladas provisorias") +
+      "</strong>: " + nombres + (prov.length > 4 ? " y " + (prov.length - 4) + " más" : "") +
+      ". Son embarques que el libro de reportería todavía no trae: la cifra " +
+      "sale del CNN-EMB y del time sheet de esta app, <strong>no está " +
+      "liquidada con el armador</strong>. En la tabla van marcadas «prov.».</div>";
+    caja.hidden = false;
+  }
+
   function renderTemporada(){
     if(!temporada) return;
     var v = temporada.vista || temporada;
+    pintarProvisorias((v.datos && v.datos.recaladas) ||
+                      ((temporada.vigente || temporada.datos) || {}).recaladas);
     var qs = v.trimestres, d = v.diagnostico, t = d.total;
     if(!qs.length){
       $("temp-lectura").innerHTML = '<p class="text-3">El filtro no deja ninguna recalada.</p>';
@@ -2678,12 +2764,20 @@
     /* Lo cobrado y lo estimado, separados: es la diferencia entre lo que ya
        está en la cuenta y lo que todavía puede cambiar. */
     $("t-liquidado").textContent = usdCompacto(t.netoLiquidado);
+    /* La ficha dice lo COBRADO. Una recalada provisoria no está cobrada —no
+       salió del libro, la calculó esta app— así que no entra en la cifra, y
+       el pie tiene que nombrarla por lo que es: «proyección» haría pensar en
+       una nave que todavía no carga, y ésta ya cargó. */
+    var provis = t.provisorias || 0;
     $("t-liquidado-sub").textContent = t.proyectadas
-      ? t.proyectadas + " de " + t.naves + " son proyección · " + usdCompacto(t.demurrageProyectado)
+      ? t.proyectadas + " de " + t.naves + " sin liquidar" +
+        (provis ? " · " + provis + (provis === 1 ? " provisoria" : " provisorias") : "") +
+        " · " + usdCompacto(t.netoProyectado)
       : "las " + t.naves + " recaladas están liquidadas";
     $("kpi-t-liquidado").querySelector(".ico-marca").style.color = t.proyectadas ? AVISO : "var(--cmp-blue-400)";
     $("temp-hero-sub").textContent = t.proyectadas
-      ? usdCompacto(t.netoLiquidado) + " liquidados + " + usdCompacto(t.demurrageProyectado) + " proyectados"
+      ? usdCompacto(t.netoLiquidado) + " liquidados + " + usdCompacto(t.netoProyectado) +
+        (provis && provis === t.proyectadas ? " provisorios" : " sin liquidar")
       : usdCompacto(t.demurrage) + " menos " + usdCompacto(t.despatch) + " de despatch";
 
     pintarChispas(qs, t);
@@ -2928,7 +3022,9 @@
         var colorLaycan = estado === "tarde" ? CRITICO : estado === "antes" ? AVISO : "";
         filas.push("<tr>" +
           "<td>" + q.trimestre + "</td>" +
-          "<td>" + esc(r.nave) + "</td>" +
+          "<td>" + esc(r.nave) + (r.provisoria
+            ? ' <span class="prov" title="Calculada en esta app con el CNN-EMB; el libro de reportería todavía no trae esta recalada.">prov.</span>'
+            : "") + "</td>" +
           "<td>" + esc(r.inco || "—") + "</td>" +
           '<td class="n tabular">' + (r.cargo ? Math.round(r.cargo).toLocaleString("es-CL") : "—") + "</td>" +
           '<td' + (colorLaycan ? ' style="color:' + colorLaycan + '"' : "") + ">" + (estado || "—") + "</td>" +

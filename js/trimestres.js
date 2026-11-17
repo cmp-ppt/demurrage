@@ -242,8 +242,19 @@
 
         liquidadas: liquidadas.length,
         proyectadas: proyectadas.length,
+        /* De las no liquidadas, cuántas son cálculo propio y no filas del
+           libro: no es lo mismo una proyección del plan que un embarque ya
+           cerrado que el libro aún no trae. */
+        provisorias: lista.filter(function(r){ return !!r.provisoria; }).length,
         demurrageLiquidado: suma(liquidadas, function(r){ return r.demurrage; }),
         demurrageProyectado: suma(proyectadas, function(r){ return r.demurrage; }),
+        /* El neto de lo no liquidado, con el despatch restado igual que en
+           `netoLiquidado`. El demurrage solo alcanzaba mientras lo no
+           liquidado eran proyecciones del plan, que nunca traen despatch;
+           una recalada provisoria sí puede traerlo, y entonces «aporta
+           US$ 0» sería falso: aporta a favor. */
+        netoProyectado: suma(proyectadas, function(r){ return r.demurrage; }) -
+                        Math.abs(suma(proyectadas, function(r){ return r.despatch; })),
         despatchLiquidado: Math.abs(suma(liquidadas, function(r){ return r.despatch; })),
         netoLiquidado: suma(liquidadas, function(r){ return r.demurrage; }) -
                        Math.abs(suma(liquidadas, function(r){ return r.despatch; })),
@@ -319,6 +330,8 @@
       neto: demurrage - despatch,
       liquidadas: suma(trimestres, function(t){ return t.liquidadas; }),
       proyectadas: suma(trimestres, function(t){ return t.proyectadas; }),
+      provisorias: suma(trimestres, function(t){ return t.provisorias; }),
+      netoProyectado: suma(trimestres, function(t){ return t.netoProyectado; }),
       demurrageLiquidado: suma(trimestres, function(t){ return t.demurrageLiquidado; }),
       demurrageProyectado: suma(trimestres, function(t){ return t.demurrageProyectado; }),
       netoLiquidado: suma(trimestres, function(t){ return t.netoLiquidado; }),
@@ -368,9 +381,20 @@
     }
 
     if(t.proyectadas > 0){
-      frases.push(t.proyectadas + (t.proyectadas === 1 ? " recalada es proyección" : " recaladas son proyección") +
-        " y aportan " + moneda(t.demurrageProyectado) + " al total: lo liquidado son " +
-        moneda(t.netoLiquidado) + ".");
+      /* «Proyección» y «provisoria» no son lo mismo y la frase tiene que
+         distinguirlas: una proyección es una fila del plan que el libro
+         todavía no cerró; una provisoria es un embarque ya cargado que el
+         libro no trae y que calculó esta app. Las dos comparten lo único
+         que decide esta frase —no están liquidadas— pero quien la lee en
+         una reunión necesita saber de cuál está hablando. */
+      var prov = t.provisorias || 0;
+      var sueltas = t.proyectadas - prov;
+      var que = [];
+      if(sueltas > 0) que.push(sueltas + (sueltas === 1 ? " es proyección del plan" : " son proyección del plan"));
+      if(prov > 0) que.push(prov + (prov === 1 ? " es provisoria (cálculo propio)" : " son provisorias (cálculo propio)"));
+      frases.push(t.proyectadas + (t.proyectadas === 1 ? " recalada no está liquidada" : " recaladas no están liquidadas") +
+        " —" + que.join(" y ") + "— y aportan " + moneda(t.netoProyectado) +
+        " al total: lo liquidado son " + moneda(t.netoLiquidado) + ".");
     }
 
     var peor = null;
@@ -416,6 +440,13 @@
    */
   function esProyectada(r, hoy){
     if(!r) return false;
+    /* Una recalada provisoria no viene del libro: la calculó esta app porque
+       el área comercial todavía no la incorporó. No hace falta olfatearla
+       —viene marcada— y lo que importa acá es que NO está liquidada, que es
+       justo lo que separa esta lista de la otra. Sin esto, la ficha de
+       «Liquidado» sumaría una cifra que nadie acordó con el armador y diría
+       que está cobrada. */
+    if(r.provisoria) return true;
     hoy = aFecha(hoy) || new Date();
     var fin = aFecha(r.finCarga);
     if(fin && fin > hoy) return true;

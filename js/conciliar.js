@@ -502,8 +502,13 @@
         primeraEspia: c.primeraEspia, arribo: c.arribo
       });
       if(par) return;                         // está en el libro, aunque sea ambigua
+      /* Va el registro entero y no solo el rótulo: quien arma la temporada
+         provisoria necesita rehacer el time sheet de esa nave, y volver a
+         buscarla en la flota por nombre sería repetir —peor— el emparejado
+         que acá ya se hizo con los hitos. */
       out.fuera.push({nave: c.nave, codigo: c.codigo || "",
-                      fecha: c.finCarga || c.inicioCarga || c.primeraEspia || ""});
+                      fecha: c.finCarga || c.inicioCarga || c.primeraEspia || "",
+                      reg: reg});
     });
     /* Del más reciente al más antiguo: lo que falta por agregar al libro es
        casi siempre lo último que cargó. */
