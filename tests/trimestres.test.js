@@ -6,6 +6,7 @@
  * dejan de cuadrar y se nota antes de presentarlas a gerencia.
  */
 var T = require("../js/trimestres.js");
+var R = require("../js/reporteria.js");
 
 var fallas = 0, total = 0;
 function chequear(nombre, obtenido, esperado, tol){
@@ -443,6 +444,58 @@ chequear("y que es provisoria, no proyección", frases.indexOf("provisoria") >= 
    de una recalada cuyo despatch vale US$ 11.901 a favor. */
 chequear("la frase trae el neto, no el demurrage solo",
   frases.indexOf("11.901") >= 0, true);
+
+/* ---------------------------------------------------------------- */
+bloque("El libro no siempre respeta sus propias columnas");
+
+/* La convención: demurrage positivo en su columna, despatch negativo en la
+   otra, nunca los dos. El libro de noviembre de 2026 la rompe de dos
+   formas distintas en la misma hoja. */
+chequear("lo normal pasa tal cual", T.montos({demurrage:55000, despatch:0}).dem, 55000);
+chequear("y el despatch normal también", T.montos({demurrage:0, despatch:-12000}).des, -12000);
+/* C AURORA: el despatch escrito en la columna de demurrage, en negativo. */
+var corrido = T.montos({demurrage:-11278, despatch:0});
+chequear("un demurrage negativo es un despatch", corrido.des, -11278);
+chequear("y deja el demurrage en cero", corrido.dem, 0);
+/* MINERAL BOTSWANA: el mismo monto en las dos columnas. Sumarlas lo cobra
+   dos veces y el trimestre queda US$ 18.988 por debajo del propio libro. */
+var doble = T.montos({demurrage:-18988, despatch:-18988});
+chequear("el monto repetido se cuenta una vez", doble.des, -18988);
+chequear("y no queda también en demurrage", doble.dem, 0);
+/* Dos montos negativos DISTINTOS no son una repetición: se suman. */
+var dos = T.montos({demurrage:-5000, despatch:-3000});
+chequear("dos despatch distintos se suman", dos.des, -8000);
+chequear("sin fila no revienta", T.montos().dem, 0);
+
+/* Y en el agregado: un trimestre con las tres formas tiene que dar el mismo
+   neto que la suma a mano. */
+var mezcla = T.porTrimestre({recaladas: [
+  {trimestre:"Q4", nave:"NORMAL", cargo:100000, demurrage:18968, despatch:0,
+   atb:new Date("2026-10-08T18:06:00"), inicioCarga:new Date("2026-10-08T21:53:00"),
+   finCarga:new Date("2026-10-10T22:20:00")},
+  {trimestre:"Q4", nave:"COLUMNA CAMBIADA", cargo:176000, demurrage:-11278, despatch:0,
+   atb:new Date("2026-11-06T06:00:00"), inicioCarga:new Date("2026-11-06T12:12:00"),
+   finCarga:new Date("2026-11-12T23:00:00")},
+  {trimestre:"Q4", nave:"REPETIDO", cargo:204699, demurrage:-18988, despatch:-18988,
+   atb:new Date("2026-10-02T11:30:00"), inicioCarga:new Date("2026-10-02T15:54:00"),
+   finCarga:new Date("2026-10-08T04:00:00")}
+]}, new Date("2026-11-17T00:00:00"));
+chequear("el demurrage bruto deja fuera los negativos", mezcla[0].demurrage, 18968);
+chequear("el despatch los junta a los dos", mezcla[0].despatch, 30266);
+chequear("y el neto es el de sumar a mano", mezcla[0].neto, 18968 - 30266);
+chequear("una nave con demurrage, no tres", mezcla[0].enDemurrage, 1);
+chequear("y dos con despatch", mezcla[0].enDespatch, 2);
+
+/* El aviso tiene que nombrar solo la repetida: la de columna cambiada no
+   está mal sumada, solo mal puesta. */
+var dup = R.despatchDuplicado([
+  {nave:"REPETIDO", trimestre:"Q4", demurrage:-18988, despatch:-18988},
+  {nave:"COLUMNA CAMBIADA", trimestre:"Q4", demurrage:-11278, despatch:0},
+  {nave:"NORMAL", trimestre:"Q4", demurrage:18968, despatch:0}
+]);
+chequear("solo se denuncia la repetida", dup.length, 1);
+chequear("y con su monto", dup[0].monto, 18988);
+chequear("sin recaladas no revienta", R.despatchDuplicado().length, 0);
 
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

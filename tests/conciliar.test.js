@@ -584,5 +584,20 @@ var soloCerrados = C.embarcadoDeTurno([{nave:"A", finCarga:F("2026-10-18")}],
   {"2026-10": {totalMineral: 454874}});
 chequear("sin meses abiertos la lista va vacía", soloCerrados.parciales.length, 0);
 
+/* El libro mira hacia adelante: desde noviembre trae las naves de diciembre
+   que todavía no cargan. Pedir esa planilla es pedir algo que no existe. */
+var conFuturo = C.embarcadoDeTurno(
+  [{nave:"A", finCarga:F("2026-10-18")}, {nave:"B", finCarga:F("2026-11-14")},
+   {nave:"C", finCarga:F("2026-12-21")}],
+  {"2026-10": {totalMineral: 454874}, "2026-11": {totalMineral: 308075, parcial:true, hasta:17}},
+  new Date("2026-11-17T00:00:00"));
+chequear("diciembre no se cuenta todavía", conFuturo.meses.length, 2);
+chequear("y no figura como planilla que falta", conFuturo.faltan.length, 0);
+chequear("el mes en curso sí se cuenta", conFuturo.meses[1], "2026-11");
+/* Pasado diciembre, su planilla sí se espera. */
+var enEnero = C.embarcadoDeTurno(
+  [{nave:"C", finCarga:F("2026-12-21")}], {}, new Date("2027-01-05T00:00:00"));
+chequear("ya en enero, diciembre se espera", enEnero.faltan.join(","), "2026-12");
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

@@ -104,6 +104,29 @@
   }
 
   /**
+   * Recaladas donde el despatch quedó anotado dos veces.
+   *
+   * El libro tiene una columna para el demurrage y otra para el despatch, y
+   * la convención es que nunca coexisten: el despatch va en su columna, en
+   * negativo. El libro de noviembre de 2026 trae MINERAL BOTSWANA con
+   * −18.988 en LAS DOS, o sea el mismo despatch escrito dos veces.
+   *
+   * Sumar las dos columnas lo cobra dos veces: ese trimestre quedaba US$
+   * 18.988 por debajo de lo que dice el propio libro, y la diferencia no se
+   * ve por ninguna parte —son dos celdas iguales en una fila de 41—. Por eso
+   * la suma lo cuenta una sola vez y acá se nombra la fila, para que se pueda
+   * arreglar en el Excel en vez de arrastrarlo todo el año.
+   */
+  function despatchDuplicado(recaladas){
+    return (recaladas || []).filter(function(r){
+      var dem = Number(r.demurrage) || 0, des = Number(r.despatch) || 0;
+      return dem < 0 && des < 0 && Math.abs(dem - des) < 1;
+    }).map(function(r){
+      return {nave: r.nave, trimestre: r.trimestre, monto: Math.abs(Number(r.demurrage) || 0)};
+    });
+  }
+
+  /**
    * Una recalada con forma de fila del libro, armada con el cálculo propio.
    *
    * El libro de reportería lo regenera el área comercial cada cierto tiempo
@@ -352,6 +375,13 @@
     if(!hRecaladas) avisos.push("No se encontró la hoja PUNTA TOTORALILLO: sin ella no hay temporada que mostrar.");
     if(!hTiempos)   avisos.push("No se encontró «Ops time VS Time allowed»: no se puede separar la espera de la operación de carga.");
     if(!hDelays)    avisos.push("No se encontró la hoja Delays: las detenciones por categoría quedan vacías.");
+    /* Estas dos faltaban en la lista y el libro de noviembre llegó sin
+       ninguna de las dos. Los paneles de adentro lo dicen, pero están
+       plegados: quien carga el libro ve este aviso y nada más, así que si
+       acá no se nombran, la app se queda callada sobre media hoja perdida y
+       el que lo note tiene que ser la persona. */
+    if(!hClima)     avisos.push("No se encontró la hoja «Weather Cause»: los días perdidos por clima quedan en cero.");
+    if(!hPlan)      avisos.push("No se encontró la hoja «Plan de embarque»: sin ella no hay exposición del plan ni ETA nominado.");
 
     var datos = {
       recaladas:   leerRecaladas(hRecaladas),
@@ -376,6 +406,12 @@
        BOTSWANA, con laycan, NOR, atraque y carga los siete en octubre,
        rotulada Q3. Con eso Q4 no existía en el filtro y la nave entraba en
        los totales del trimestre equivocado. */
+    despatchDuplicado(datos.recaladas).forEach(function(d){
+      avisos.push("«" + d.nave + "» (" + d.trimestre + ") trae el mismo despatch en las dos " +
+        "columnas, demurrage y despatch: US$ " + Math.round(d.monto).toLocaleString("es-CL") +
+        ". Se cuenta una sola vez; conviene dejar la celda de demurrage en cero en el libro.");
+    });
+
     desencajadas(datos.recaladas).forEach(function(d){
       avisos.push("«" + d.nave + "» dice " + d.declarado + " en la columna A, pero sus fechas " +
         "están todas en " + d.porFecha + " (" + d.desde + " a " + d.hasta + "). " +
@@ -408,7 +444,7 @@
 
   var api = {
     trimestreDeFecha: trimestreDeFecha, desencajadas: desencajadas,
-    filaProvisoria: filaProvisoria,
+    filaProvisoria: filaProvisoria, despatchDuplicado: despatchDuplicado,
     desdeLibro: desdeLibro,
     leerRecaladas: leerRecaladas,
     leerTiempos: leerTiempos,

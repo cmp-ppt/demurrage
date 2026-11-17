@@ -207,17 +207,20 @@
       var liquidadas = lista.filter(function(r){ return !r.proyectada; });
       var proyectadas = lista.filter(function(r){ return r.proyectada; });
 
-      var demurrage = suma(lista, function(r){ return r.demurrage; });
+      /* Cada fila pasa por `montos` antes de entrar a cualquier suma: el
+         libro no siempre respeta su propia convención de columnas. */
+      lista.forEach(function(r){ r.montos = montos(r); });
+      var demurrage = suma(lista, function(r){ return r.montos.dem; });
       // El despatch viene negativo en el libro: se guarda como magnitud y el
       // neto lo resta, para que nadie tenga que adivinar el signo al leerlo.
-      var despatch = Math.abs(suma(lista, function(r){ return r.despatch; }));
+      var despatch = Math.abs(suma(lista, function(r){ return r.montos.des; }));
       var cargo = suma(lista, function(r){ return r.cargo; });
 
       var esperaDem = [], esperaSin = [];
       lista.forEach(function(r){
         var d = diasEntre(r.nor, r.atb);
         if(d == null) return;
-        (r.demurrage > 0 ? esperaDem : esperaSin).push(d);
+        (r.montos.dem > 0 ? esperaDem : esperaSin).push(d);
       });
       function promedio(v){ return v.length ? v.reduce(function(a,b){ return a+b; }, 0) / v.length : null; }
 
@@ -234,8 +237,8 @@
       return {
         trimestre: q,
         naves: lista.length,
-        enDemurrage: lista.filter(function(r){ return r.demurrage > 0; }).length,
-        enDespatch: lista.filter(function(r){ return r.despatch !== 0; }).length,
+        enDemurrage: lista.filter(function(r){ return r.montos.dem > 0; }).length,
+        enDespatch: lista.filter(function(r){ return r.montos.des !== 0; }).length,
         demurrage: demurrage,
         despatch: despatch,
         neto: demurrage - despatch,
@@ -246,18 +249,18 @@
            libro: no es lo mismo una proyección del plan que un embarque ya
            cerrado que el libro aún no trae. */
         provisorias: lista.filter(function(r){ return !!r.provisoria; }).length,
-        demurrageLiquidado: suma(liquidadas, function(r){ return r.demurrage; }),
-        demurrageProyectado: suma(proyectadas, function(r){ return r.demurrage; }),
+        demurrageLiquidado: suma(liquidadas, function(r){ return r.montos.dem; }),
+        demurrageProyectado: suma(proyectadas, function(r){ return r.montos.dem; }),
         /* El neto de lo no liquidado, con el despatch restado igual que en
            `netoLiquidado`. El demurrage solo alcanzaba mientras lo no
            liquidado eran proyecciones del plan, que nunca traen despatch;
            una recalada provisoria sí puede traerlo, y entonces «aporta
            US$ 0» sería falso: aporta a favor. */
-        netoProyectado: suma(proyectadas, function(r){ return r.demurrage; }) -
-                        Math.abs(suma(proyectadas, function(r){ return r.despatch; })),
-        despatchLiquidado: Math.abs(suma(liquidadas, function(r){ return r.despatch; })),
-        netoLiquidado: suma(liquidadas, function(r){ return r.demurrage; }) -
-                       Math.abs(suma(liquidadas, function(r){ return r.despatch; })),
+        netoProyectado: suma(proyectadas, function(r){ return r.montos.dem; }) -
+                        Math.abs(suma(proyectadas, function(r){ return r.montos.des; })),
+        despatchLiquidado: Math.abs(suma(liquidadas, function(r){ return r.montos.des; })),
+        netoLiquidado: suma(liquidadas, function(r){ return r.montos.dem; }) -
+                       Math.abs(suma(liquidadas, function(r){ return r.montos.des; })),
         cargo: cargo,
         usdPorTonelada: cargo > 0 ? (demurrage - despatch) / cargo : 0,
 
@@ -438,6 +441,34 @@
    * la cifra del plan de embarque —198.000, 206.000— y las reales, lo que
    * marcó el pesómetro.
    */
+  /**
+   * El demurrage y el despatch de una fila, puestos en la columna que les
+   * toca antes de sumarlos.
+   *
+   * El libro tiene dos columnas y la convención es que nunca coexisten: el
+   * demurrage va positivo en la suya, el despatch negativo en la otra. El
+   * libro de noviembre de 2026 la rompe de dos formas distintas en la misma
+   * hoja. C AURORA trae su despatch en la columna de demurrage, en negativo
+   * y con la de despatch en cero. MINERAL BOTSWANA lo trae en LAS DOS, el
+   * mismo monto repetido.
+   *
+   * Sumar las columnas tal cual deja el demurrage bruto corto en el primer
+   * caso y cobra el despatch dos veces en el segundo: Q4 quedaba US$ 18.988
+   * por debajo de lo que dice el propio libro. No es una corrección en
+   * silencio —`despatchDuplicado` nombra la fila en los avisos al cargar el
+   * libro— pero la suma no puede quedar mal mientras alguien arregla el
+   * Excel.
+   */
+  function montos(r){
+    var dem = Number(r && r.demurrage) || 0;
+    var des = Number(r && r.despatch) || 0;
+    if(dem >= 0) return {dem: dem, des: des};
+    // El mismo monto en las dos columnas: es una sola plata.
+    if(Math.abs(dem - des) < 1) return {dem: 0, des: des};
+    // Despatch en la columna equivocada: se corre a la suya.
+    return {dem: 0, des: des + dem};
+  }
+
   function esProyectada(r, hoy){
     if(!r) return false;
     /* Una recalada provisoria no viene del libro: la calculó esta app porque
@@ -602,6 +633,7 @@
   }
 
   var api = {
+    montos: montos,
     ORDEN: ORDEN,
     porTrimestre: porTrimestre,
     total: total,

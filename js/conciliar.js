@@ -536,11 +536,19 @@
    * daría de menos sin decirlo, que es la peor forma de equivocarse: hacia
    * abajo y en silencio.
    */
-  function embarcadoDeTurno(recaladas, porMes){
+  function embarcadoDeTurno(recaladas, porMes, hoy){
+    /* El libro mira hacia adelante: desde noviembre de 2026 trae las naves
+       de diciembre que todavía no cargan. Pedir la planilla de un mes que no
+       ha pasado es pedir algo que no existe, y el «falta la planilla de
+       2026-12» hacía ver como un pendiente lo que es el curso normal. Se
+       cuentan los meses hasta el actual, inclusive: el actual sí puede
+       tener planilla, aunque sea de mitad de mes. */
+    var d = hoy instanceof Date ? hoy : (hoy ? new Date(hoy) : new Date());
+    var tope = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
     var meses = {}, orden = [];
     (recaladas || []).forEach(function(r){
       var k = claveMes(r && (r.finCarga || r.atb || r.nor || r.eta));
-      if(!k || meses[k]) return;
+      if(!k || meses[k] || k > tope) return;
       meses[k] = true; orden.push(k);
     });
     orden.sort();
