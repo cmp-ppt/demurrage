@@ -570,6 +570,80 @@
             completo: orden.length > 0 && faltan.length === 0};
   }
 
+  /**
+   * Las detenciones de la temporada, armadas desde los CNN-EMB guardados.
+   *
+   * La hoja Delays del libro reporta cada detención con su categoría, sus
+   * días y su costo. El libro de noviembre de 2026 llegó sin ella, y el
+   * panel de la temporada quedaba vacío teniendo el dato a mano: las mismas
+   * detenciones están en cada CNN-EMB —son las 21 categorías de
+   * RESUMEN_TIEMPOS— y la app ya las guarda de cada embarque que calculó.
+   *
+   * Lo que el CNN-EMB NO trae es el costo en dólares de cada detención ni el
+   * conteo de paradas: RESUMEN_TIEMPOS suma horas por categoría, no anota
+   * cada evento. Esas dos cifras quedan sin llenar en vez de inventadas, y
+   * van marcadas `provisoria` para que el panel pueda decirlo.
+   *
+   * El trimestre y el nombre salen de la fila de la recalada y no del
+   * embarque: el filtro de la temporada cruza las detenciones con las
+   * recaladas por «trimestre|nave», y una detención rotulada por su cuenta
+   * se perdería al filtrar.
+   */
+  function detencionesPropias(recaladas, flota){
+    var out = [];
+    if(!recaladas || !recaladas.length) return out;
+    (flota || []).forEach(function(reg){
+      var c = (reg && reg.campos) || {};
+      var ded = (reg && reg.deducciones) || [];
+      if(!c.nave || !ded.length) return;
+      var par = emparejar(c.nave, recaladas, {
+        finCarga: c.finCarga, inicioCarga: c.inicioCarga,
+        primeraEspia: c.primeraEspia, arribo: c.arribo
+      });
+      /* Una nave con dos recaladas y fechas que no deciden: repartir sus
+         horas a ojo las pondría en el trimestre equivocado. */
+      if(!par || !par.fila) return;
+      ded.forEach(function(d){
+        var h = Number(d.horas) || 0;
+        if(h <= 0) return;
+        out.push({trimestre: par.fila.trimestre, nave: par.fila.nave,
+                  categoria: d.nombre, lado: d.lado || "",
+                  dias: h / 24, costo: 0, rate: 0,
+                  inicio: null, fin: null, provisoria: true});
+      });
+    });
+    return out;
+  }
+
+  /**
+   * Días perdidos por clima, de esas mismas detenciones.
+   *
+   * De las 21 categorías del RTE, las de lado «clima» son dos: eventos
+   * climáticos y fuerza mayor. Agregadas por trimestre dan lo que resume la
+   * hoja «Weather Cause» del libro.
+   *
+   * Se filtra por `lado` y no por el nombre de la categoría: el nombre lo
+   * escribe la planilla y ya cambió de forma una vez; el lado lo fija la
+   * tabla de categorías de la app.
+   *
+   * Solo cuenta detenciones propias. Si las detenciones vinieron del libro y
+   * aun así falta la hoja de clima, el libro sabrá por qué: rearmarla desde
+   * sus propias Delays sería contradecirlo.
+   */
+  function climaPropio(detenciones){
+    var m = {}, orden = [];
+    (detenciones || []).forEach(function(d){
+      if(!d || !d.provisoria || d.lado !== "clima") return;
+      var k = d.trimestre + "|" + d.categoria;
+      if(!m[k]){
+        m[k] = {trimestre: d.trimestre, causa: d.categoria, dias: 0, provisoria: true};
+        orden.push(k);
+      }
+      m[k].dias += Number(d.dias) || 0;
+    });
+    return orden.map(function(k){ return m[k]; });
+  }
+
   /** El mes anterior a una clave «YYYY-MM». */
   function mesAnterior(k){
     var m = /^(\d{4})-(\d{2})$/.exec(String(k || ""));
@@ -693,7 +767,8 @@
              claveMes: claveMes, embarcadoDeTurno: embarcadoDeTurno,
              mesAnterior: mesAnterior, caladoDeTurno: caladoDeTurno,
              alcanceDelLibro: alcanceDelLibro,
-             planillaAlcanza: planillaAlcanza};
+             planillaAlcanza: planillaAlcanza,
+             detencionesPropias: detencionesPropias, climaPropio: climaPropio};
   if(typeof module === "object" && module.exports) module.exports = api;
   else global.Conciliar = api;
 

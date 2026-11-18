@@ -2494,10 +2494,20 @@
     if(!temporada || !temporada.datos) return null;
     var base = temporada.datos;
     var extra = provisorias();
-    if(!extra.length) return base;
+    var faltanDetenciones = !(base.detenciones || []).length;
+    if(!extra.length && !faltanDetenciones) return base;
     var out = {};
     Object.keys(base).forEach(function(k){ out[k] = base[k]; });
     out.recaladas = (base.recaladas || []).concat(extra);
+    /* Las detenciones del libro vienen de su hoja Delays, que el libro de
+       noviembre no trae. Pero las mismas detenciones están en cada CNN-EMB
+       —son las 21 categorías de RESUMEN_TIEMPOS— y la app ya las tiene
+       guardadas de cada embarque que se calculó. Sin esto el panel de la
+       temporada quedaba vacío teniendo el dato a mano. */
+    if(faltanDetenciones) out.detenciones = CONC.detencionesPropias(out.recaladas, flota);
+    /* Lo mismo con el clima: la hoja «Weather Cause» agrega por trimestre lo
+       que los CNN-EMB ya traen nave por nave en dos de sus categorías. */
+    if(!(base.clima || []).length) out.clima = CONC.climaPropio(out.detenciones);
     return out;
   }
 
@@ -2832,12 +2842,13 @@
     }).join("");
 
     // ── detenciones por categoría ──
-    var porCat = {};
+    var porCat = {}, detProv = false;
     qs.forEach(function(q){
       q.detenciones.forEach(function(c){
         if(!porCat[c.categoria]) porCat[c.categoria] = {categoria:c.categoria, dias:0, costo:0};
         porCat[c.categoria].dias += c.dias;
         porCat[c.categoria].costo += c.costo;
+        if(c.provisoria) detProv = true;
       });
     });
     var cats = Object.keys(porCat).map(function(k){ return porCat[k]; })
@@ -2847,16 +2858,30 @@
     }), {color: SERIE.controlable,
          fmtValor: function(v){ return v.toFixed(1) + " d"; },
          fmtEje:   function(v){ return v.toFixed(0) + " d"; }});
-    $("temp-det-nota").textContent = t.diasDetenidos.toFixed(1) + " días en total";
+    $("temp-det-nota").textContent = t.diasDetenidos.toFixed(1) + " días en total" +
+      (detProv ? " · de los CNN-EMB: el libro no trae la hoja Delays" : "");
 
     $("tb-temp-det").innerHTML = qs.reduce(function(filas, q){
       return filas.concat(q.detenciones.map(function(c){
-        return "<tr><td>" + esc(c.categoria) + "</td><td>" + q.trimestre +
+        /* Sin la hoja Delays no hay conteo de paradas ni costo: el RTE suma
+           horas por categoría. Las dos columnas dicen qué son en vez de
+           mostrar un número que significa otra cosa. */
+        return "<tr><td>" + esc(c.categoria) +
+          (c.provisoria ? ' <span class="prov" title="De los CNN-EMB guardados; el libro no trae la hoja Delays.">prov.</span>' : "") +
+          "</td><td>" + q.trimestre +
           '</td><td class="n tabular">' + c.dias.toFixed(2) +
-          '</td><td class="n tabular">' + c.eventos +
-          '</td><td class="n tabular">' + Math.round(c.costo).toLocaleString("es-CL") + "</td></tr>";
+          '</td><td class="n tabular">' + (c.provisoria
+            ? c.eventos + (c.eventos === 1 ? " nave" : " naves") : c.eventos) +
+          '</td><td class="n tabular">' + (c.provisoria ? "—" : Math.round(c.costo).toLocaleString("es-CL")) + "</td></tr>";
       }));
     }, []).join("") || '<tr><td colspan="5" class="text-3">Sin detenciones registradas.</td></tr>';
+    /* Sin la hoja Delays las dos últimas columnas cambian de significado:
+       la de eventos cuenta naves y la de costo no existe. Decirlo en el
+       encabezado evita leer «6 eventos» donde hay seis naves. */
+    if($("th-temp-det-ev")) $("th-temp-det-ev").textContent = detProv ? "Naves" : "Eventos";
+    if($("sum-temp-det")) $("sum-temp-det").textContent = detProv
+      ? "Ver el detalle por trimestre (sin costo: el libro no trae la hoja Delays)"
+      : "Ver el detalle por trimestre, con costo estimado";
 
     // ── clima ──
     var causas = {};
@@ -2873,7 +2898,11 @@
       }), qs.map(function(q, i){
         return {nombre: q.trimestre, color: [SERIE.nocontrolable, SERIE.efectiva, SERIE.controlable][i % 3]};
       }), {fmt: function(v){ return v.toFixed(1) + " d"; }});
-      $("temp-clima-nota").textContent = t.diasClima.toFixed(1) + " días perdidos por clima";
+      var climaProv = qs.some(function(q){
+        return (q.clima || []).some(function(c){ return c.provisoria; });
+      });
+      $("temp-clima-nota").textContent = t.diasClima.toFixed(1) + " días perdidos por clima" +
+        (climaProv ? " · de los CNN-EMB: el libro no trae «Weather Cause»" : "");
     }else{
       G.barrasAgrupadas($("g-temp-clima"), [], []);
       $("temp-clima-nota").textContent = "el libro no trae la hoja de clima";

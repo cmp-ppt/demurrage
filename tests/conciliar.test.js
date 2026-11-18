@@ -599,5 +599,68 @@ var enEnero = C.embarcadoDeTurno(
   [{nave:"C", finCarga:F("2026-12-21")}], {}, new Date("2027-01-05T00:00:00"));
 chequear("ya en enero, diciembre se espera", enEnero.faltan.join(","), "2026-12");
 
+/* ---------------------------------------------------------------- */
+bloque("Detenciones de la temporada sin la hoja Delays");
+
+/* El libro de noviembre llegó sin Delays y el panel quedaba vacío teniendo
+   el dato: las mismas detenciones están en cada CNN-EMB, en las 21
+   categorías de RESUMEN_TIEMPOS. */
+var libroDet = [
+  {trimestre:"Q3", nave:"CHINA TRIUMPH", finCarga:F("2026-09-05")},
+  {trimestre:"Q4", nave:"C AURORA", finCarga:F("2026-11-12")}
+];
+var flotaDet = [
+  {campos:{nave:"MN CHINA TRIUMPH", codigo:"CNN-EMB-430", finCarga:"2026-09-05 12:00"},
+   deducciones:[{nombre:"Eventos climáticos", lado:"clima", horas:12},
+                {nombre:"Mtto. Mec.", lado:"puerto", horas:6},
+                {nombre:"Deslastre", lado:"nave", horas:0}]},
+  {campos:{nave:"MN C AURORA", codigo:"CNN-EMB-441", finCarga:"2026-11-12 23:00"},
+   deducciones:[{nombre:"Eventos climáticos", lado:"clima", horas:36},
+                {nombre:"Amarras", lado:"nave", horas:3}]}
+];
+var dets = C.detencionesPropias(libroDet, flotaDet);
+chequear("una fila por categoría con horas", dets.length, 4);
+chequear("las de cero horas no entran",
+  dets.filter(function(d){ return d.categoria === "Deslastre"; }).length, 0);
+chequear("las horas pasan a días", dets[0].dias, 0.5);
+/* El trimestre y el nombre salen de la fila del libro, no del embarque: el
+   filtro cruza por «trimestre|nave» y una detención rotulada por su cuenta
+   se perdería al filtrar. */
+chequear("toma el trimestre de la fila del libro", dets[0].trimestre, "Q3");
+chequear("y el nombre tal como lo escribe el libro", dets[0].nave, "CHINA TRIUMPH");
+chequear("sin costo, que el CNN-EMB no trae", dets[0].costo, 0);
+chequear("y marcada como provisoria", dets[0].provisoria, true);
+
+/* Una nave que no está en el libro no tiene dónde colgar sus detenciones. */
+chequear("una nave ajena al libro no aporta",
+  C.detencionesPropias(libroDet, [{campos:{nave:"MN DESCONOCIDA", finCarga:"2026-11-20 00:00"},
+    deducciones:[{nombre:"Amarras", lado:"nave", horas:5}]}]).length, 0);
+/* Y una ambigua tampoco: repartir sus horas a ojo las pondría en el
+   trimestre equivocado. */
+var dosEsc = [{trimestre:"Q2", nave:"PIGI"}, {trimestre:"Q3", nave:"PIGI"}];
+chequear("una nave ambigua no se reparte",
+  C.detencionesPropias(dosEsc, [{campos:{nave:"MN PIGI"},
+    deducciones:[{nombre:"Amarras", lado:"nave", horas:5}]}]).length, 0);
+chequear("sin libro no hay detenciones", C.detencionesPropias([], flotaDet).length, 0);
+chequear("sin flota tampoco", C.detencionesPropias(libroDet, []).length, 0);
+chequear("sin argumentos no revienta", C.detencionesPropias().length, 0);
+
+/* ---------------------------------------------------------------- */
+bloque("Clima de la temporada desde esas detenciones");
+
+var clima = C.climaPropio(dets);
+chequear("un bloque por trimestre con clima", clima.length, 2);
+chequear("Q3 lleva 12 h", clima[0].dias, 0.5);
+chequear("Q4 lleva 36 h", clima[1].dias, 1.5);
+chequear("la causa es la categoría", clima[0].causa, "Eventos climáticos");
+/* Se filtra por lado y no por nombre: el nombre lo escribe la planilla. */
+chequear("las de puerto y nave no son clima",
+  C.climaPropio([{trimestre:"Q1", categoria:"Mtto. Mec.", lado:"puerto", dias:1, provisoria:true}]).length, 0);
+/* Las del libro no se rearman: si trajo Delays y no Weather Cause, sabrá. */
+chequear("las detenciones del libro no arman clima",
+  C.climaPropio([{trimestre:"Q1", categoria:"Eventos climáticos", lado:"clima", dias:1}]).length, 0);
+chequear("sin detenciones no hay clima", C.climaPropio([]).length, 0);
+chequear("sin argumentos no revienta", C.climaPropio().length, 0);
+
 console.log("\n" + (fallas === 0 ? "TODO OK" : "HAY FALLAS") + ": " + (total - fallas) + "/" + total + " comprobaciones.");
 process.exit(fallas === 0 ? 0 : 1);

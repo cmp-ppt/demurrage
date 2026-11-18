@@ -374,13 +374,15 @@
 
     if(!hRecaladas) avisos.push("No se encontró la hoja PUNTA TOTORALILLO: sin ella no hay temporada que mostrar.");
     if(!hTiempos)   avisos.push("No se encontró «Ops time VS Time allowed»: no se puede separar la espera de la operación de carga.");
-    if(!hDelays)    avisos.push("No se encontró la hoja Delays: las detenciones por categoría quedan vacías.");
+    if(!hDelays)    avisos.push("No se encontró la hoja Delays: las detenciones se arman con las " +
+                      "categorías de los CNN-EMB guardados, sin su costo en dólares ni el conteo de paradas.");
     /* Estas dos faltaban en la lista y el libro de noviembre llegó sin
        ninguna de las dos. Los paneles de adentro lo dicen, pero están
        plegados: quien carga el libro ve este aviso y nada más, así que si
        acá no se nombran, la app se queda callada sobre media hoja perdida y
        el que lo note tiene que ser la persona. */
-    if(!hClima)     avisos.push("No se encontró la hoja «Weather Cause»: los días perdidos por clima quedan en cero.");
+    if(!hClima)     avisos.push("No se encontró la hoja «Weather Cause»: los días por clima salen de las " +
+                      "categorías climáticas de los CNN-EMB guardados.");
     if(!hPlan)      avisos.push("No se encontró la hoja «Plan de embarque»: sin ella no hay exposición del plan ni ETA nominado.");
 
     var datos = {

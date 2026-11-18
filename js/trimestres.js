@@ -159,10 +159,14 @@
     (detenciones || []).forEach(function(d){
       var k = String(d.categoria || "").trim();
       if(!k) return;
-      if(!m[k]) m[k] = {categoria: k, dias: 0, costo: 0, eventos: 0};
+      if(!m[k]) m[k] = {categoria: k, dias: 0, costo: 0, eventos: 0, provisoria: false};
       m[k].dias += Number(d.dias) || 0;
       m[k].costo += Number(d.costo) || 0;
       m[k].eventos++;
+      /* Armada desde los CNN-EMB y no desde la hoja Delays: ahí `eventos`
+         cuenta naves, no paradas, y no hay costo. Quien pinte la categoría
+         tiene que poder decirlo. */
+      if(d.provisoria) m[k].provisoria = true;
     });
     return Object.keys(m).map(function(k){ return m[k]; })
       .sort(function(a, b){ return b.dias - a.dias; });
