@@ -3792,6 +3792,15 @@
     pdfjsLib.GlobalWorkerOptions.workerSrc = "js/vendor/pdf.worker.min.js";
   }
 
+  /* La versión que está corriendo de verdad, tomada del sello de
+     index.html. Si el navegador sirvió un app.js viejo con un index nuevo,
+     o al revés, esto lo delata sin tener que abrir las herramientas. */
+  (function(){
+    var m = document.querySelector('meta[name="version"]');
+    var n = $("cab-version");
+    if(n) n.textContent = (m && m.content) || "—";
+  })();
+
   PRES.iniciar();
   pintarUmbrales();
   bitacora = bitCargar();

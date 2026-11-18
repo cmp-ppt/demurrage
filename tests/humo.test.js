@@ -88,6 +88,25 @@ function chequear(nombre, ok, detalle){
   });
   chequear("la configuración del repositorio levanta la puerta sola", conPuerta,
     conPuerta ? "pide cuenta" : "no pidió cuenta: js/config.js está vacío");
+
+  /* El sello de cache. Sin él, publicar un arreglo y que la persona lo vea
+     son dos cosas distintas: el navegador se queda con el js viejo y el
+     panel sigue saliendo como antes. Se comprueba acá y no en un test
+     aparte porque lo que importa es que la PÁGINA SERVIDA lo traiga. */
+  var sello = await pagina.evaluate(function(){
+    var m = document.querySelector('meta[name="version"]');
+    var fuentes = Array.prototype.map.call(
+      document.querySelectorAll('script[src^="js/"], link[href^="css/"]'),
+      function(n){ return n.getAttribute("src") || n.getAttribute("href"); });
+    return {version: m && m.content, fuentes: fuentes,
+            sinSellar: fuentes.filter(function(u){ return !/\?v=[a-f0-9]{8}$/.test(u); }),
+            visible: (document.getElementById("cab-version") || {}).textContent};
+  });
+  chequear("index.html declara su versión", /^[a-f0-9]{8}$/.test(sello.version || ""), sello.version);
+  chequear("todos los js y css locales van sellados",
+    sello.fuentes.length > 0 && sello.sinSellar.length === 0,
+    sello.sinSellar.length ? "sin sellar: " + sello.sinSellar.join(", ") : sello.fuentes.length + " sellados");
+  chequear("y la versión se ve en la cabecera", sello.visible, sello.version);
   if(conPuerta){
     await pagina.click("#btn-sin-conectar");
     await pagina.waitForTimeout(300);

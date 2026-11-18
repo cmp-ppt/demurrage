@@ -150,6 +150,26 @@ lectura del `.xlsx` funciona sin internet y detrás del firewall corporativo. Lo
 pide fuera es la tipografía de Google Fonts; si está bloqueada, la página cae a las fuentes
 del sistema y sigue operando igual.
 
+## Publicar
+
+No hay build, pero sí **un paso obligatorio antes de commitear** cualquier cambio en
+`js/` o `css/`:
+
+```bash
+node scripts/sellar.js        # pone ?v=<hash> a cada js y css en index.html
+```
+
+GitHub Pages sirve los archivos con cache y el navegador se los queda más tiempo
+todavía. Sin el sello, publicar un arreglo y que la persona lo vea son dos cosas
+distintas: pasó con el panel de detenciones, que se arregló, se publicó, y al otro
+lado seguía saliendo vacío con el JavaScript viejo. El hash es por archivo, así que
+el que no cambió conserva su URL y sigue en cache.
+
+La versión del conjunto queda en `<meta name="version">` y se muestra en la ruta de
+la cabecera. Cuando alguien reporte que no ve un cambio, esa cifra dice si está
+corriendo lo publicado o una copia vieja — y `tests/humo.test.js` falla si algún
+archivo quedó sin sellar.
+
 ## Pruebas
 
 El motor de cálculo no depende del DOM, así que se prueba con Node sin dependencias:

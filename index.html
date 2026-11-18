@@ -2,10 +2,11 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
+<meta name="version" content="305b405c">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Laytime &amp; Demurrage — Puerto Punta Totoralillo</title>
 <meta name="description" content="Dashboard operacional de laytime, demurrage/despatch y muellaje para embarques en Puerto Punta Totoralillo. Importa el Registro de Tiempos de Embarque (CNN-EMB-XXX.xlsx).">
-<link rel="stylesheet" href="css/cmp.css">
+<link rel="stylesheet" href="css/cmp.css?v=5b553eea">
 </head>
 <body>
 
@@ -57,6 +58,11 @@
     <div class="cab-ruta" style="margin-left:auto">
       <span>Operaciones</span><span>›</span><span>Embarque</span><span>›</span>
       <span class="activo" id="bc-recalada">Recalada sin cargar</span>
+      <!-- La versión publicada, a la vista. Un arreglo publicado y un
+           arreglo que la persona ve son dos cosas distintas cuando el
+           navegador se queda con el JavaScript viejo: con esto, una captura
+           de pantalla basta para saber cuál de las dos pasó. -->
+      <span id="cab-version" class="cab-ver" title="Versión publicada"></span>
     </div>
     <label class="sel-historial" for="selector-recaladas">
       <svg class="ico" aria-hidden="true"><use href="#ico-calendario"></use></svg>
@@ -1316,25 +1322,25 @@
 </div>
 
 
-<script src="js/config.js"></script>
-<script src="js/vendor/xlsx.full.min.js"></script>
-<script src="js/vendor/pdf.min.js"></script>
-<script src="js/escena.js"></script>
-<script src="js/laytime.js"></script>
-<script src="js/importar-rte.js"></script>
-<script src="js/leer-nor.js"></script>
-<script src="js/graficos.js"></script>
-<script src="js/flota.js"></script>
-<script src="js/sesion.js"></script>
-<script src="js/nube.js"></script>
-<script src="js/reporteria.js"></script>
-<script src="js/trimestres.js"></script>
-<script src="js/clima.js"></script>
-<script src="js/bitacora.js"></script>
-<script src="js/turno.js"></script>
-<script src="js/conciliar.js"></script>
-<script src="js/lectura.js"></script>
-<script src="js/presentacion.js"></script>
-<script src="js/app.js"></script>
+<script src="js/config.js?v=835df09c"></script>
+<script src="js/vendor/xlsx.full.min.js?v=7f749f81"></script>
+<script src="js/vendor/pdf.min.js?v=af1d7a5e"></script>
+<script src="js/escena.js?v=bde1b3c3"></script>
+<script src="js/laytime.js?v=8352fa11"></script>
+<script src="js/importar-rte.js?v=8c459b8f"></script>
+<script src="js/leer-nor.js?v=4c27f38a"></script>
+<script src="js/graficos.js?v=83488c06"></script>
+<script src="js/flota.js?v=5befad83"></script>
+<script src="js/sesion.js?v=93efd98a"></script>
+<script src="js/nube.js?v=4a6c72b6"></script>
+<script src="js/reporteria.js?v=e49ea874"></script>
+<script src="js/trimestres.js?v=a763e8c0"></script>
+<script src="js/clima.js?v=5d35f7f9"></script>
+<script src="js/bitacora.js?v=742ba8f0"></script>
+<script src="js/turno.js?v=c10169a9"></script>
+<script src="js/conciliar.js?v=16d9cd6a"></script>
+<script src="js/lectura.js?v=4689f240"></script>
+<script src="js/presentacion.js?v=23ecbdbc"></script>
+<script src="js/app.js?v=9d1645ac"></script>
 </body>
 </html>
