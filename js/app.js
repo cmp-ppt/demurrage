@@ -2273,6 +2273,9 @@
   }
 
   function aplicarReporteria(r, nombre){
+    /* Antes de reemplazar: lo que este libro trae queda apuntado, para que
+       el próximo que llegue sin esa hoja no se lleve el dato por delante. */
+    recordarHojas(r.datos, nombre);
     temporada = {datos: r.datos};
     recomputarTemporada();
     var trimestres = temporada.trimestres;
@@ -2375,6 +2378,8 @@
   }
 
   var CLAVE_TEMP = "demurrage-ppt.temporada.v1";
+  /* Lo que trajo el último libro que SÍ traía cada hoja. Ver `recordarHojas`. */
+  var CLAVE_AUX = "demurrage-ppt.libro-hojas.v1";
 
   var CLAVE_TEMP_FECHA = "demurrage-ppt.temporada.fecha.v1";
 
@@ -2395,6 +2400,56 @@
      espera NOR→amarre saldría vacía en todo lo que no venga recién leído del
      Excel. Vale para lo que se recupera del navegador y para lo que baja de
      la nube, que llegan por el mismo camino. */
+  /* ─────────── memoria de las hojas que el libro deja de traer ───────────
+   *
+   * El libro se reemplaza entero cada vez, y el de noviembre llegó con dos
+   * hojas donde el anterior traía cinco. Al cargarlo se perdieron de golpe
+   * los tiempos de Q1 a Q3 —espera antes del amarre, uso del laytime—, que
+   * son trimestres cerrados y liquidados: ningún dato nuevo los cambió, se
+   * fueron porque el archivo nuevo no los menciona.
+   *
+   * Acá se guarda, hoja por hoja, lo que trajo el último libro que sí la
+   * traía, con de qué archivo salió y cuándo. No entra en `temporada.datos`
+   * —eso sigue siendo el libro tal cual, que es lo que se guarda y lo que
+   * sube a la nube— sino que `libroVigente` rellena con esto lo que el
+   * libro de turno no trae, y los paneles dicen de dónde salió.
+   */
+  var HOJAS_AUX = ["tiempos", "detenciones", "clima", "plan"];
+  var hojasAux = {};
+
+  function auxCargar(){
+    var crudo = null;
+    try{ crudo = JSON.parse(localStorage.getItem(CLAVE_AUX) || "null"); }catch(e){ crudo = null; }
+    hojasAux = (crudo && typeof crudo === "object") ? crudo : {};
+    HOJAS_AUX.forEach(function(k){
+      var h = hojasAux[k];
+      if(h && h.filas) rehidratarHoja(k, h.filas);
+    });
+  }
+
+  function auxGuardar(){
+    try{ localStorage.setItem(CLAVE_AUX, JSON.stringify(hojasAux)); }catch(e){ /* sin espacio: se sigue */ }
+  }
+
+  /** Apunta las hojas que este libro sí trae, para cuando el próximo no las traiga. */
+  function recordarHojas(datos, nombre){
+    if(!datos) return;
+    var cambio = false;
+    HOJAS_AUX.forEach(function(k){
+      var filas = datos[k] || [];
+      if(!filas.length) return;
+      hojasAux[k] = {origen: nombre || "", fecha: new Date().toISOString(), filas: filas};
+      cambio = true;
+    });
+    if(cambio) auxGuardar();
+  }
+
+  function rehidratarHoja(k, filas){
+    var crudo = {}; crudo[k] = filas;
+    rehidratar(crudo);
+    return filas;
+  }
+
   function rehidratar(crudo){
     if(!crudo) return crudo;
     ["recaladas","tiempos","plan"].forEach(function(k){
@@ -2414,6 +2469,9 @@
   function adoptarTemporada(crudo, nota){
     if(!crudo || !crudo.recaladas || !crudo.recaladas.length) return false;
     rehidratar(crudo);
+    /* Vale igual para el libro que bajó de la nube: si lo cargó otra persona
+       con las cinco hojas, acá quedan apuntadas. */
+    if(nota) recordarHojas(crudo, "libro compartido");
     temporada = {datos: crudo};
     /* Los trimestres salen del libro vigente —el libro más lo provisorio—,
        no del libro solo: si no, el filtro seguiría sin ofrecer el trimestre
@@ -2494,20 +2552,39 @@
     if(!temporada || !temporada.datos) return null;
     var base = temporada.datos;
     var extra = provisorias();
-    var faltanDetenciones = !(base.detenciones || []).length;
-    if(!extra.length && !faltanDetenciones) return base;
     var out = {};
     Object.keys(base).forEach(function(k){ out[k] = base[k]; });
     out.recaladas = (base.recaladas || []).concat(extra);
-    /* Las detenciones del libro vienen de su hoja Delays, que el libro de
-       noviembre no trae. Pero las mismas detenciones están en cada CNN-EMB
-       —son las 21 categorías de RESUMEN_TIEMPOS— y la app ya las tiene
-       guardadas de cada embarque que se calculó. Sin esto el panel de la
-       temporada quedaba vacío teniendo el dato a mano. */
-    if(faltanDetenciones) out.detenciones = CONC.detencionesPropias(out.recaladas, flota);
-    /* Lo mismo con el clima: la hoja «Weather Cause» agrega por trimestre lo
-       que los CNN-EMB ya traen nave por nave en dos de sus categorías. */
-    if(!(base.clima || []).length) out.clima = CONC.climaPropio(out.detenciones);
+
+    /* Orden de preferencia para cada hoja que el libro de turno no trae:
+       primero el último libro que sí la traía, y recién después el cálculo
+       propio. Un dato del área comercial, aunque sea de la versión anterior
+       del libro, manda sobre uno que armamos acá. */
+    var origen = {};
+    HOJAS_AUX.forEach(function(k){
+      if((base[k] || []).length) return;              // el libro la trae: nada que hacer
+      var h = hojasAux[k];
+      if(h && h.filas && h.filas.length){
+        out[k] = h.filas;
+        origen[k] = {de: "libro-anterior", archivo: h.origen || "", fecha: h.fecha || ""};
+      }
+    });
+
+    /* Las detenciones del libro vienen de su hoja Delays. Si no la trae
+       ninguna versión del libro, las mismas detenciones están en cada
+       CNN-EMB —son las 21 categorías de RESUMEN_TIEMPOS— y la app ya las
+       tiene guardadas de cada embarque que se calculó. */
+    if(!(out.detenciones || []).length){
+      out.detenciones = CONC.detencionesPropias(out.recaladas, flota);
+      if(out.detenciones.length) origen.detenciones = {de: "cnn-emb"};
+    }
+    /* Lo mismo con el clima: «Weather Cause» agrega por trimestre lo que los
+       CNN-EMB traen nave por nave en dos de sus categorías. */
+    if(!(out.clima || []).length){
+      out.clima = CONC.climaPropio(out.detenciones);
+      if(out.clima.length) origen.clima = {de: "cnn-emb"};
+    }
+    out.origenHojas = origen;
     return out;
   }
 
@@ -2644,6 +2721,24 @@
       "sale del CNN-EMB y del time sheet de esta app, <strong>no está " +
       "liquidada con el armador</strong>. En la tabla van marcadas «prov.».</div>";
     caja.hidden = false;
+  }
+
+  /**
+   * De dónde salió una hoja que el libro de turno no trae, en dos palabras.
+   *
+   * Va pegado al pie de la ficha o del panel que la usa. Sin esto, un dato
+   * del libro de septiembre y uno del libro de hoy se leen igual, y el día
+   * que no cuadren nadie sabe cuál mirar.
+   */
+  function procedencia(k){
+    var o = (temporada && temporada.vigente && temporada.vigente.origenHojas) || {};
+    var h = o[k];
+    if(!h) return "";
+    if(h.de === "cnn-emb") return " · de los CNN-EMB";
+    var f = h.fecha ? new Date(h.fecha) : null;
+    return " · del libro anterior" +
+      (h.archivo ? " (" + esc(h.archivo) + ")" : "") +
+      (f && !isNaN(f) ? ", cargado el " + f.toLocaleDateString("es-CL") : "");
   }
 
   function renderTemporada(){
@@ -2793,10 +2888,12 @@
        hay veintidós que no cruzaron con la hoja de tiempos. */
     $("t-espera-sub").textContent = t.conTiempos
       ? t.conTiempos + " de " + t.naves + " naves" +
-        (t.operacion > 0 ? " · " + (t.espera / t.operacion).toFixed(1) + " veces la carga" : "")
+        (t.operacion > 0 ? " · " + (t.espera / t.operacion).toFixed(1) + " veces la carga" : "") +
+        procedencia("tiempos")
       : "ninguna nave cruzó con la hoja de tiempos";
     $("t-allowed").textContent = pct(t.usoDelAllowed);
-    $("t-allowed-sub").textContent = t.dentroDelAllowed + " de " + t.conTiempos + " naves dentro del laytime";
+    $("t-allowed-sub").textContent = t.dentroDelAllowed + " de " + t.conTiempos +
+      " naves dentro del laytime" + (t.conTiempos ? procedencia("tiempos") : "");
     $("t-allowed").style.color = t.usoDelAllowed <= 100 ? OK : CRITICO;
 
     /* Lo cobrado y lo estimado, separados: es la diferencia entre lo que ya
@@ -2859,7 +2956,7 @@
          fmtValor: function(v){ return v.toFixed(1) + " d"; },
          fmtEje:   function(v){ return v.toFixed(0) + " d"; }});
     $("temp-det-nota").textContent = t.diasDetenidos.toFixed(1) + " días en total" +
-      (detProv ? " · de los CNN-EMB: el libro no trae la hoja Delays" : "");
+      procedencia("detenciones");
 
     $("tb-temp-det").innerHTML = qs.reduce(function(filas, q){
       return filas.concat(q.detenciones.map(function(c){
@@ -2898,14 +2995,13 @@
       }), qs.map(function(q, i){
         return {nombre: q.trimestre, color: [SERIE.nocontrolable, SERIE.efectiva, SERIE.controlable][i % 3]};
       }), {fmt: function(v){ return v.toFixed(1) + " d"; }});
-      var climaProv = qs.some(function(q){
-        return (q.clima || []).some(function(c){ return c.provisoria; });
-      });
       $("temp-clima-nota").textContent = t.diasClima.toFixed(1) + " días perdidos por clima" +
-        (climaProv ? " · de los CNN-EMB: el libro no trae «Weather Cause»" : "");
+        procedencia("clima");
     }else{
       G.barrasAgrupadas($("g-temp-clima"), [], []);
-      $("temp-clima-nota").textContent = "el libro no trae la hoja de clima";
+      /* Ni el libro de hoy, ni ninguno anterior, ni los CNN-EMB: no hay
+         horas de clima en ninguna de las tres fuentes. */
+      $("temp-clima-nota").textContent = "sin horas de clima en el libro ni en los CNN-EMB";
     }
 
     renderAtribucion(qs);
@@ -3826,6 +3922,9 @@
     "?waves," + CLIMA.PUERTO.lat + "," + CLIMA.PUERTO.lon + ",13";
   NUBE.alCambiar(pintarEstadoNube);
   flota = FL.cargar();
+  /* Antes de restaurar la temporada: `libroVigente` rellena con estas hojas
+     lo que el libro guardado no traiga. */
+  auxCargar();
   refrescarSelector();
   cargarConfigNube();
   SESION.alCambiar(pintarEstadoNube);

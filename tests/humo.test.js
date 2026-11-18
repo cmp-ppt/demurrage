@@ -106,6 +106,23 @@ function chequear(nombre, ok, detalle){
   chequear("todos los js y css locales van sellados",
     sello.fuentes.length > 0 && sello.sinSellar.length === 0,
     sello.sinSellar.length ? "sin sellar: " + sello.sinSellar.join(", ") : sello.fuentes.length + " sellados");
+  /* Y que el sello corresponda al archivo de verdad. Un «?v=» viejo pegado
+     a un archivo nuevo es exactamente el error que el sello viene a evitar:
+     la URL no cambia, el navegador sirve lo que tenía, y el arreglo se
+     publica sin llegar. Que el sello EXISTA no alcanza. */
+  var crypto = require("crypto");
+  var rancios = sello.fuentes.filter(function(u){
+    var partes = /^([^?]+)\?v=([a-f0-9]+)$/.exec(u);
+    if(!partes) return false;                       // ya lo denuncia la comprobación de arriba
+    var abs = path.join(__dirname, "..", partes[1]);
+    if(!fs.existsSync(abs)) return true;
+    var real = crypto.createHash("sha1").update(fs.readFileSync(abs)).digest("hex").slice(0, 8);
+    return real !== partes[2];
+  });
+  chequear("y el sello es el del contenido de cada archivo",
+    rancios.length === 0,
+    rancios.length ? "sello viejo: " + rancios.join(", ") + " — corre node scripts/sellar.js" : "todos al día");
+
   chequear("y la versión se ve en la cabecera", sello.visible, sello.version);
   if(conPuerta){
     await pagina.click("#btn-sin-conectar");
